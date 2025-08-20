@@ -1,0 +1,41 @@
+# ==============================
+#  Config geral do NewMultiverso
+# ==============================
+
+# ----- Acesso / Bypass de permissão de /mvtp -----
+Bypass-vip: true      # mv.Bypass + grupo.vip ignora mv.tp.<mundo>
+Bypass-membro: false  # mv.Bypass + grupo.membro ignora mv.tp.<mundo>
+
+# ----- Mensagens -----
+messages:
+  prefix: "&6[Multiverso] &f"
+
+  # Gerais
+  no-permission: "&cVocê não tem permissão."
+  only-players: "&cApenas jogadores."
+  invalid-command: "&cComando inválido. Use &e/mv help&c."
+  invalid-usage: "&cUso: &e{usage}"
+  reloaded: "&aConfig recarregada."
+
+  # Mundo
+  invalid-environment: "&cAmbiente/tipo inválido: &e{env}&c. Use: &enormal, plano, void, nether, end."
+  world-created: "&aMundo &f{world} &acriado/carregado."
+  world-deleted: "&aMundo &f{world} &aremovido (descarregado do servidor)."
+  creation-error: "&cFalha ao criar o mundo &f{world}&c."
+  world-not-found: "&cMundo &f{world} &cnão encontrado."
+  world-not-loaded: "&cEste mundo não está carregado: &f{world}"
+  world-already-exists: "&eO mundo &f{world} &ejá está carregado."
+  players-in-world: "&cNão é possível descarregar: há jogadores nesse mundo."
+  world-unloaded: "&aMundo descarregado: &f{world}"
+  unknown-error: "&cErro desconhecido."
+  worlds-folder-not-found: "&ePasta de mundos não encontrada."
+  world-loaded: "&aMundo carregado: &f{world}"
+  spawn-set: "&aSpawn do mundo atual definido."
+  teleport-success: "&aTeleportado para o mundo &f{world}&a."
+  command-not-registered: "&cComando não registrado: &f{command}"
+
+  # Gamerules (usadas por GameRuleUtil)
+  gamerules:
+    created-default-section: "&aSeção padrão de gamerules criada em &f{world}&a."
+    applied-gamerules: "&aGamerules aplicadas para &f{world}&a."
+    save-error: "&cErro ao salvar gamerules do mundo &f{world}&c."

@@ -1,0 +1,28 @@
+# Tempo (em segundos) entre cada limpeza automática
+intervalo:
+  segundos: 300   # 300s = 5 minutos
+
+# Segundos antes da limpeza para avisar no chat global
+avisos:
+  segundos_antes: [60, 30, 10, 5, 4, 3, 2, 1]
+
+mensagens:
+  prefix: "&7[&aLixeira&7]&r "
+  aviso: "&eLimpando itens dropados em &c{seg}s&e..."
+  limpo: "&aLixeira: &f{qtd} &aitens removidos."
+  nada: "&aLixeira: nada para limpar."
+  status: "&ePróxima limpeza em &c{seg}s&e."
+  reload: "&aConfiguração recarregada."
+  sem_permissao: "&cSem permissão."
+
+# Filtros de materiais
+filtros:
+  # Se true: só remove materiais listados abaixo (whitelist)
+  # Se false: remove todos EXCETO os listados (blacklist)
+  usar_whitelist: false
+
+  # Materiais que entram na whitelist/blacklist
+  # (nomes em maiúsculo conforme Bukkit 1.7.10)
+  materiais:
+    - COBBLESTONE
+    - DIRT

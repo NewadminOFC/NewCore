@@ -1,0 +1,174 @@
+name: NewCore
+main: n.plugins.NewCore
+version: 1.0
+author: NewPlugins
+softdepend: [PlaceholderAPI]   # NewChat usa se estiver carregado
+
+commands:
+  # ===== Chat =====
+  g:            {description: Chat global}
+  tell:         {description: PM/lock, aliases: [msg, w]}
+  chat:         {description: Admin do chat}
+  cores:        {description: Paleta de cores}
+
+  # ===== WorldEdit =====
+  wand:         {description: Wand}
+  pos1:         {description: Seleção pos1}
+  pos2:         {description: Seleção pos2}
+  pos0:         {description: Seleção pos0 (âncora)}
+  hpos1:        {description: Seleção pos1 olhando bloco}
+  hpos2:        {description: Seleção pos2 olhando bloco}
+  desel:        {description: Limpar seleção}
+  set:          {description: Preencher}
+  replace:      {description: Substituir}
+  undo:         {description: Desfazer}
+  redo:         {description: Refazer}
+  copy:         {description: Copiar}
+  cut:          {description: Recortar}
+  paste:        {description: Colar}
+  expand:       {description: Expandir seleção}
+  contract:     {description: Contrair seleção}
+  stack:        {description: Empilhar seleção}
+  move:         {description: Mover seleção}
+  rotate:       {description: Rotacionar clipboard}
+  flip:         {description: Inverter clipboard}
+  size:         {description: Info da seleção}
+  count:        {description: Contar blocos}
+  distr:        {description: Distribuição de blocos}
+
+  cyl:          {description: Cria cilindro, usage: "/<command> <bloco> <raio> [altura]"}
+  sphere:       {description: Cria esfera, usage: "/<command> <bloco> <raio>"}
+  elipse:       {description: Cria elipse 2D, usage: "/<command> <bloco> <raioX> <raioZ>"}
+  ellipsoid:    {description: Cria elipsoide 3D, usage: "/<command> <bloco> <raioX> <raioY> <raioZ>"}
+  up:           {description: Sobe o jogador N blocos, usage: "/<command> [altura]"}
+
+  # ===== WorldGuard =====
+  rg:           {description: Regiões, aliases: [region]}
+  flags:        {description: Lista/ajuda de flags}
+
+  # ===== Multiverso =====
+  mv:           {description: Multiverso (create/delete/load/unload/list/tp/reload)}
+  mvtp:         {description: Teleporte para mundo}
+
+  # ===== Warps =====
+  setwarp:      {description: Define warp}
+  warp:         {description: Teleporta/lista/reload warps}
+  removewarp:   {description: Remove warp}
+
+  # ===== NewTrash =====
+  newtrash:
+    description: Limpeza automática de itens dropados
+    usage: /newtrash <agora|status|reload|setinterval>
+    permission: newtrash.use
+    aliases: []
+
+permissions:
+  # ===== NewChat =====
+  newchat.chat:      {default: true}
+  newchat.global:    {default: true}
+  newchat.tell:      {default: true}
+  newchat.reload:    {default: op}
+  newchat.cores:     {default: true}
+
+  # ===== NewWorldEdit =====
+  new.wand:       {default: op}
+  new.pos:        {default: op}
+  new.pos0:       {default: op}
+  new.hpos:       {default: op}   # cobre hpos1/hpos2
+  new.desel:      {default: op}
+  new.set:        {default: op}
+  new.replace:    {default: op}
+  new.undo:       {default: op}
+  new.redo:       {default: op}
+  new.copy:       {default: op}
+  new.cut:        {default: op}
+  new.paste:      {default: op}
+  new.expand:     {default: op}
+  new.contract:   {default: op}
+  new.stack:      {default: op}
+  new.move:       {default: op}
+  new.rotate:     {default: op}
+  new.flip:       {default: op}
+  new.size:       {default: op}
+  new.count:      {default: op}
+  new.distr:      {default: op}
+  new.cyl:        {default: op}
+  new.sphere:     {default: op}
+  new.elipse:     {default: op}
+  new.ellipsoid:  {default: op}
+  new.up:         {default: op}
+
+  # pacote completo
+  new.*:
+    default: op
+    children:
+      new.wand: true
+      new.pos: true
+      new.pos0: true
+      new.hpos: true
+      new.desel: true
+      new.set: true
+      new.replace: true
+      new.undo: true
+      new.redo: true
+      new.copy: true
+      new.cut: true
+      new.paste: true
+      new.expand: true
+      new.contract: true
+      new.stack: true
+      new.move: true
+      new.rotate: true
+      new.flip: true
+      new.size: true
+      new.count: true
+      new.distr: true
+      new.cyl: true
+      new.sphere: true
+      new.elipse: true
+      new.ellipsoid: true
+      new.up: true
+
+  # ===== NewWorldGuard =====
+  newwg.bypass:      {default: op}
+  newwg.notify:      {default: op}
+
+  # ===== Multiverso =====
+  newworlds.help:     {default: op}
+  newworlds.create:   {default: op}
+  newworlds.delete:   {default: op}
+  newworlds.setspawn: {default: op}
+  newworlds.reload:   {default: op}
+  newworlds.load:     {default: op}
+  newworlds.unload:   {default: op}
+  newworlds.list:     {default: op}
+
+  newworlds.*:
+    default: op
+    children:
+      newworlds.help: true
+      newworlds.create: true
+      newworlds.delete: true
+      newworlds.setspawn: true
+      newworlds.reload: true
+      newworlds.load: true
+      newworlds.unload: true
+      newworlds.list: true
+
+  mv.tp.*:           {default: op}
+  mv.Bypass:         {default: op}
+
+  grupo.vip:         {default: false}
+  grupo.membro:      {default: false}
+
+  # ===== Warps =====
+  warp.vip.bypass:   {default: op}
+  warp.reload:       {default: op}
+
+  # ===== NewTrash =====
+  newtrash.use:
+    description: Permite usar /newtrash agora e ver status
+    default: true
+  newtrash.admin:
+    description: Permite recarregar config e mudar intervalo
+    default: op

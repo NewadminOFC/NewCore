@@ -1,0 +1,38 @@
+# =========================
+#  Config do NewWarps (único)
+# =========================
+
+geral:
+  prefix: "&b[Warps]&r "
+  message-title: true
+  message-title-coord: false
+
+bypass:
+  geral: false      # true = todos ignoram permissão da warp
+  vip: false        # true = quem tiver perm "warp.vip.bypass" ignora permissão
+
+messages:
+  apenas-jogadores: "&cApenas jogadores podem usar este comando."
+  sem-permissao: "&cVocê não tem permissão."
+  reload: "&aConfig recarregada."
+
+  warp-set: "&aWarp &f{warp} &acriada e salva."
+  warp-remove: "&eWarp &f{warp} &eremovida."
+  warp-nao-existe: "&cWarp &f{warp}&c não existe."
+  warps-lista: "&aWarps: &f{lista}"
+  nenhum-warp: "&eNenhuma warp definida."
+  warp-teleport: "&aTeleportado para &f{warp}"
+  world-not-loaded: "&cO mundo da warp não está carregado ou não existe."
+
+# Defina suas warps aqui (exemplo abaixo):
+# warps:
+#   spawn:
+#     world: world
+#     x: 0.0
+#     y: 64.0
+#     z: 0.0
+#     yaw: 0.0
+#     pitch: 0.0
+#     permission: "warp.spawn"
+#     mensagem: "&aSpawn"
+warps: {}

@@ -1,0 +1,153 @@
+# ===========================================
+#  Configuração unificada do plugin
+#  (NewWorldEdit + NewWorldGuard)
+#  Arquivo: ConfigNewEdit.yml
+#  Coloque em: src/main/resources/ConfigNewEdit.yml
+# ===========================================
+
+edit:
+  # Quantos blocos processar por tick (operações em lote)
+  blocks-per-tick: 2000
+
+  # Limites de segurança (-1 desativa)
+  max-blocks: 500000
+  max-clipboard-blocks: 800000
+  max-undo-per-player: 10
+  undo:
+    max-blocks-total-per-player: 2000000
+
+  # Comportamento
+  copy:
+    include-air: true
+  sounds-enabled: true
+  wand-item: WOOD_AXE
+
+  replace:
+    # true = exige data exata; false = 0 vira curinga (match parcial)
+    require-data-exact: false
+
+  messages:
+    no-permission: "&cVocê não tem permissão para usar este comando."
+    incomplete-selection: "&cSeleção incompleta! Use a wand (/wand) ou /pos1 e /pos2."
+    operation-start: "&7Iniciando operação em &f%blocks% &7blocos..."
+    operation-done: "&aOperação concluída!"
+    undo-start: "&7Desfazendo %blocks% blocos em lotes..."
+    undo-done: "&aUndo concluído!"
+    nothing-to-undo: "&eNada para desfazer."
+    wand-given: "&aWand entregue (machado de madeira)."
+    pos1: "&aPos1: &f%x%&7,&f%y%&7,&f%z%"
+    pos2: "&aPos2: &f%x%&7,&f%y%&7,&f%z%"
+    world-invalid: "&cMundo inválido."
+    world-mismatch: "&cSua seleção é em outro mundo. Vá para &f%world% &cou redefina /pos."
+    usage-set: "&eUso: /set <id|NOME[:data]>"
+    usage-replace: "&eUso: /replace <de> <para>"
+    copy-done: "&aCopiados %blocks% blocos. Âncora = sua posição atual."
+    nothing-copied: "&eNada copiado. Use /copy."
+    paste-start: "&7Colando %blocks% blocos em lotes..."
+    too-big: "&cA seleção (%blocks%) excede o limite (%max%). Operação cancelada."
+    error-generic: "&cFalha no comando. Veja console."
+    parse-error-prefix: "&cErro: "
+    wand-set-start: "&7[Wand] Aplicando último set: &f%spec% &7em &f%blocks% &7blocos..."
+    wand-no-last: "&eVocê ainda não usou /set. Segure um bloco na mão e agache com a wand para usar esse bloco."
+    undo-trimmed: "&eSeu histórico antigo foi descartado para respeitar os limites."
+
+guard:
+  messages:
+    prefix: "&7[WG]&r "
+    no-perm: "&cSem permissão."
+    pos1: "&aPos1 setada (&f%x%&7,&f%y%&7,&f%z%&a) no mundo &f%world%"
+    pos2: "&aPos2 setada (&f%x%&7,&f%y%&7,&f%z%&a) no mundo &f%world%"
+    sel-incomplete: "&cSeleção incompleta (/rg pos1 e /rg pos2)."
+    defined: "&aRegião &f%id%&a definida! Pri=&f%pri%&a, Mundo=&f%world%"
+    removed: "&aRegião &f%id%&a removida."
+    unknown-region: "&cRegião não encontrada: &f%id%"
+    flag-set: "&aFlag &f%flag%&a de &f%id%&a = &f%val%"
+    info-header: "&6Região &f%id% &7(pri=%pri%, world=%world%)"
+    info-members: "&7Owners: &f%owners% &8| &7Members: &f%members%"
+    info-bounds: "&7Bounds: &f(%minx%,%miny%,%minz%)&7 -> &f(%maxx%,%maxy%,%maxz%)"
+    info-flags: "&7Flags: &f%flags%"
+    list: "&7Regiões (%n%): &f%list%"
+    priority-set: "&aPriority de &f%id%&a = &f%pri%"
+    member-changed: "&a%what% &f%who% &aem &f%id%"
+    entry-deny: "&cEntrada negada."
+    exit-deny: "&cSaída negada."
+
+  # Flags globais padrão (top-level). Use "allow" / "deny".
+  global:
+    flags:
+      build: allow
+      pvp: allow
+      mob-spawning: allow
+      fire-spread: allow
+      interact: allow
+      use: allow
+      block-place: allow
+      block-break: allow
+      chest-access: allow
+      ride: allow
+      sleep: allow
+      tnt: allow
+      vehicle-place: allow
+      vehicle-destroy: allow
+      lighter: allow
+      creeper-explosion: allow
+      enderdragon-block-damage: allow
+      ghast-fireball: allow
+      other-explosion: allow
+      enderman-grief: allow
+      mob-damage: allow
+      item-pickup: allow
+      item-drop: allow
+      exp-drops: allow
+      potion-splash: allow
+      water-flow: allow
+      lava-flow: allow
+      snow-fall: allow
+      snow-melt: allow
+      ice-form: allow
+      ice-melt: allow
+      soil-dry: allow
+      grass-growth: allow
+      mycelium-spread: allow
+      vine-growth: allow
+      mushroom-growth: allow
+      pistons: allow
+      send-chat: allow
+      receive-chat: allow
+      enderpearl: allow
+      invincible: deny
+      fall-damage: allow
+      entry: allow
+      exit: allow
+      exit-via-teleport: allow
+      # locks opcionais (comentados por padrão)
+      # game-mode:
+      # time-lock:
+      # weather-lock:
+      # teleport:
+      # spawn:
+      # deny-message:
+      # blocked-cmds:
+      # allowed-cmds:
+
+  # Configurações por mundo e regiões criadas em runtime.
+  # O plugin vai preencher/atualizar esta árvore automaticamente.
+  worlds: {}
+  # Exemplo de como fica após criar regiões:
+  # worlds:
+  #   world:
+  #     global:
+  #       flags:
+  #         pvp: deny
+  #     regions:
+  #       spawn:
+  #         min: { x: -50, y: 0, z: -50 }
+  #         max: { x: 50,  y: 255, z: 50 }
+  #         priority: 10
+  #         owners: [ "admin" ]
+  #         members: [ ]
+  #         flags:
+  #           entry: allow
+  #           exit: allow
+  #           greeting: "&aBem-vindo ao spawn!"
+  #           farewell: "&7Volte sempre!"

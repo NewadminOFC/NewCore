@@ -1,0 +1,25 @@
+# Gamerules por mundo.
+# A seção "default-gamerules" é copiada para mundos novos/sem seção.
+
+default-gamerules:
+  doFireTick: false
+  mobGriefing: false
+  keepInventory: true
+  doMobSpawning: true
+  doMobLoot: true
+  doTileDrops: true
+  doEntityDrops: true
+  commandBlockOutput: false
+  naturalRegeneration: true
+  doDaylightCycle: true
+  logAdminCommands: false
+  showDeathMessages: true
+
+mundos: {}
+# Exemplo após aplicar/editar:
+# mundos:
+#   world:
+#     doFireTick: false
+#     keepInventory: true
+#   world_nether:
+#     doDaylightCycle: true

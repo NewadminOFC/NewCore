@@ -1,0 +1,48 @@
+# =========================
+#  Config do NewChat (único)
+# =========================
+
+prefix: "&b[NewChat]&r "
+chat-radius: 20.0
+
+permissions:
+  cores: "newchat.cores"
+
+messages:
+  # gerais
+  no-permission: "&cVocê não tem permissão."
+  only-players: "&cApenas jogadores."
+  reloaded: "&aConfig recarregada."
+  invalid-command: "&cComando inválido. Use &e/mv help&c."
+  invalid-usage: "&cUso: &e{usage}"
+
+  # chat
+  chat-usage: "&eUso: /chat reload"
+  local-format: "&7[L]&r &f{player}&7: &r{message}"
+  no-one-nearby: "&7Ninguém por perto ouviu sua mensagem."
+
+  # global (/g)
+  global-usage: "&eUso: /g <mensagem>"
+  global-format: "&6[G]&r &f{player}&7: &r{message}"
+
+  # tell (/tell)
+  tell-usage: "&eUso: /tell <nick> [mensagem] &7(sem mensagem = trava/destrava)"
+  tell-locked: "&aChat privado travado com &f{target}&a. Tudo que você digitar irá para ele."
+  tell-unlocked: "&eChat privado destravado com &f{target}&e."
+  tell-not-found: "&cJogador não encontrado: &f{target}"
+  offline-player: "Jogador offline"
+  tell-to-target: "&d&lMSG &7de &f{sender}&7: &r{message}"
+  tell-to-sender: "&d&lMSG &7para &f{target}&7: &r{message}"
+
+  # comando /cores
+  colors-title: "&b&lCores disponíveis:"
+  colors-line: "&7&m----------------------------------------"
+  colors-list1: "&f&lBranco &7(§f)  &8&lCinza &7(§8)  &7&lCinza Claro &7(§7)"
+  colors-list2: "&c&lVermelho &7(§c)  &4&lVermelho Escuro &7(§4)  &6&lAmarelo &7(§6)"
+  colors-list3: "&a&lVerde &7(§a)  &2&lVerde Escuro &7(§2)  &b&lCiano &7(§b)"
+  colors-list4: "&9&lAzul &7(§9)  &1&lAzul Escuro &7(§1)  &3&lAzul Petróleo &7(§3)"
+  colors-list5: "&d&lRosa &7(§d)  &5&lRoxo &7(§5)  &0&lPreto &7(§0)"
+  formats-title: "&b&lFormatos:"
+  formats-list: "&lNegrito &7(§l)  &nSublinhado &7(§n)  &oItálico &7(§o)  &mTachado &7(§m)  &kMágico &7(§k)  &rReset &7(§r)"
+  colors-tip: "&7Use &b& &7nas suas mensagens para colorir/formatar."
+  colors-example: "&7Exemplo: &b&lOlá &f&mMundo &7-> &b&lOlá &f&mMundo"
