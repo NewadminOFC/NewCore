@@ -34,7 +34,6 @@ commands:
   size:         {description: Info da seleção}
   count:        {description: Contar blocos}
   distr:        {description: Distribuição de blocos}
-
   cyl:          {description: Cria cilindro, usage: "/<command> <bloco> <raio> [altura]"}
   sphere:       {description: Cria esfera, usage: "/<command> <bloco> <raio>"}
   elipse:       {description: Cria elipse 2D, usage: "/<command> <bloco> <raioX> <raioZ>"}
@@ -75,6 +74,31 @@ commands:
     description: Gerencia economia (/money, /pay, /give, /take, /set, /top, /reload)
     usage: /money [pay|give|take|set|top|reload]
     aliases: [pay, eco, balance]
+
+  # ===== NewLogin =====
+  register:
+    description: Registra sua conta no servidor
+    usage: /register <senha>
+    permission: ""
+    aliases: []
+
+  login:
+    description: Faz login na sua conta
+    usage: /login <senha>
+    permission: ""
+    aliases: []
+
+  newlogin:
+    description: Comandos administrativos do login (setspawn/saida)
+    usage: /newlogin <setspawn|setsaida>
+    permission: newlogin.admin
+    aliases: []
+
+  resetsenha:
+    description: Reseta a senha de um jogador
+    usage: /resetsenha <player>
+    permission: newlogin.admin
+    aliases: []
 
 permissions:
   # ===== NewChat =====
@@ -124,6 +148,11 @@ permissions:
   # ===== NewEconomy =====
   neweconomy.admin: {default: op}
 
+  # ===== NewLogin =====
+  newlogin.admin:
+    description: Permite usar /newlogin e /resetsenha
+    default: op
+
   # pacote completo
   new.*:
     default: op
@@ -164,6 +193,8 @@ permissions:
       new.tpdeny: true
       # Economy
       neweconomy.admin: true
+      # Login
+      newlogin.admin: true
 
   # ===== NewWorldGuard =====
   newwg.bypass:      {default: op}

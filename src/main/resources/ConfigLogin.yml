@@ -1,0 +1,25 @@
+# --- Configuração de senha ---
+senha:
+  min: 4
+  max: 16
+
+# --- Timeout para login (em segundos) ---
+timeout:
+  tempo_segundos: 60
+  mensagem: "§cVocê foi kickado por inatividade ao logar!"
+
+# --- Spawn e saída ---
+spawn: null      # Local onde o jogador ficará até logar
+saida: null      # Local para teleportar após login
+
+# --- Mensagens personalizáveis ---
+mensagens:
+  registrar_sucesso: "§aRegistrado com sucesso! Use /login <senha>"
+  registrar_erro: "§cErro ao registrar!"
+  ja_registrado: "§cVocê já está registrado!"
+  nao_registrado: "§cVocê não está registrado!"
+  senha_invalida: "§cSenha inválida, precisa ter entre {min} e {max} dígitos!"
+  login_sucesso: "§aLogado com sucesso!"
+  login_erro: "§cSenha incorreta!"
+  deve_logar: "§cVocê deve logar primeiro! (/login <senha>)"
+  usar_comando: "§eUse /register <senha> ou /login <senha>"

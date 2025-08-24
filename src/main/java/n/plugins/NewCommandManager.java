@@ -1,6 +1,7 @@
 // File: src/main/java/n/plugins/NewCommandManager.java
 package n.plugins;
 
+import n.plugins.NewLogin.ResetSenhaCommand;
 import n.plugins.chat.NewChat;
 import n.plugins.chat.NewColors;
 import n.plugins.NewEdit.NewWorldEdit;
@@ -155,6 +156,7 @@ public class NewCommandManager {
         bind("register", new LoginCommand(newLogin));
         bind("login", new LoginCommand(newLogin));
         bind("newlogin", new NewLoginCommand(newLogin));
+        bind("resetsenha", new ResetSenhaCommand(newLogin));
 
         plugin.getLogger().info("[NewCommandManager] Todos comandos e listeners carregados.");
     }

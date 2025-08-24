@@ -17,6 +17,7 @@ public class LoginManager {
         this.plugin = plugin;
     }
 
+    // Inicializa SQLite
     public void init() {
         try {
             Class.forName("org.sqlite.JDBC");
@@ -29,6 +30,7 @@ public class LoginManager {
         }
     }
 
+    // Verifica se o jogador já está registrado
     public boolean isRegistered(String name) {
         try {
             PreparedStatement ps = connection.prepareStatement("SELECT name FROM accounts WHERE name=?");
@@ -40,10 +42,11 @@ public class LoginManager {
             return exists;
         } catch (SQLException e) {
             e.printStackTrace();
+            return false;
         }
-        return false;
     }
 
+    // Registra jogador
     public boolean register(String name, String pass) {
         try {
             PreparedStatement ps = connection.prepareStatement("INSERT INTO accounts (name,password) VALUES(?,?)");
@@ -53,10 +56,12 @@ public class LoginManager {
             ps.close();
             return true;
         } catch (SQLException e) {
+            e.printStackTrace();
             return false;
         }
     }
 
+    // Checa se senha está correta
     public boolean checkPassword(String name, String pass) {
         try {
             PreparedStatement ps = connection.prepareStatement("SELECT password FROM accounts WHERE name=?");
@@ -74,18 +79,40 @@ public class LoginManager {
         return false;
     }
 
+    // Reseta a senha de um jogador (utilizado pelo /resetsenha)
+    public boolean resetPassword(String name) {
+        try {
+            PreparedStatement ps = connection.prepareStatement("UPDATE accounts SET password=NULL WHERE name=?");
+            ps.setString(1, name.toLowerCase());
+            int rows = ps.executeUpdate();
+            ps.close();
+            return rows > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // Marca jogador como logado ou não
     public void setLogged(Player p, boolean state) {
-        if (state) logged.add(p.getName().toLowerCase());
-        else logged.remove(p.getName().toLowerCase());
+        String key = p.getName().toLowerCase();
+        if (state) logged.add(key);
+        else logged.remove(key);
     }
 
     public boolean isLogged(Player p) {
         return logged.contains(p.getName().toLowerCase());
     }
 
+    // Fecha conexão com banco
     public void close() {
         try {
             if (connection != null) connection.close();
         } catch (SQLException ignored) {}
+    }
+
+    // Permite acessar a conexão (para comandos administrativos)
+    public Connection getConnection() {
+        return connection;
     }
 }

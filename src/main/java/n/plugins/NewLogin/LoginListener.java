@@ -23,10 +23,10 @@ public class LoginListener implements Listener {
         return !module.getLoginManager().isLogged(p);
     }
 
-    private void forceBack(Player p) {
+    private void teleportBack(Player p) {
         if (module.getSpawn() != null) {
+            // Teleporta o jogador para o spawn definido
             p.teleport(module.getSpawn());
-            p.sendMessage(ChatColor.RED + "Você deve logar primeiro! (/login <senha>)");
         }
     }
 
@@ -34,9 +34,13 @@ public class LoginListener implements Listener {
     public void onMove(PlayerMoveEvent e) {
         Player p = e.getPlayer();
         if (check(p)) {
-            if (e.getFrom().getX() != e.getTo().getX() || e.getFrom().getZ() != e.getTo().getZ() || e.getFrom().getY() != e.getTo().getY()) {
-                forceBack(p);
+            // Apenas teleporta se o jogador mudou de posição (X, Y, Z)
+            if (e.getFrom().getX() != e.getTo().getX() ||
+                    e.getFrom().getY() != e.getTo().getY() ||
+                    e.getFrom().getZ() != e.getTo().getZ()) {
+                teleportBack(p);
             }
+            e.setCancelled(true);
         }
     }
 
@@ -44,54 +48,47 @@ public class LoginListener implements Listener {
     public void onInteract(PlayerInteractEvent e) {
         if (check(e.getPlayer())) {
             e.setCancelled(true);
-            forceBack(e.getPlayer());
         }
     }
 
     @EventHandler
     public void onChat(AsyncPlayerChatEvent e) {
-        if (check(e.getPlayer())) {
-            e.setCancelled(true);
-            e.getPlayer().sendMessage(ChatColor.RED + "Você deve logar primeiro!");
-        }
+        if (check(e.getPlayer())) e.setCancelled(true);
     }
 
     @EventHandler
     public void onDamage(EntityDamageEvent e) {
-        if (e.getEntity() instanceof Player) {
-            Player p = (Player) e.getEntity();
-            if (check(p)) e.setCancelled(true);
-        }
-    }
-
-    @EventHandler
-    public void onDeath(PlayerDeathEvent e) {
-        if (check(e.getEntity())) e.setKeepInventory(true);
+        if (e.getEntity() instanceof Player && check((Player) e.getEntity())) e.setCancelled(true);
     }
 
     @EventHandler
     public void onBreak(BlockBreakEvent e) {
-        if (check(e.getPlayer())) {
-            e.setCancelled(true);
-            forceBack(e.getPlayer());
-        }
+        if (check(e.getPlayer())) e.setCancelled(true);
     }
 
     @EventHandler
     public void onPlace(BlockPlaceEvent e) {
-        if (check(e.getPlayer())) {
-            e.setCancelled(true);
-            forceBack(e.getPlayer());
-        }
+        if (check(e.getPlayer())) e.setCancelled(true);
     }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent e) {
         Player p = e.getPlayer();
         module.getLoginManager().setLogged(p, false);
-        if (module.getSpawn() != null) {
-            p.teleport(module.getSpawn());
+        module.getLoginTask().addPlayer(p);
+        if (module.getSpawn() != null) p.teleport(module.getSpawn());
+
+        // Mensagem de registro ou login
+        if (!module.getLoginManager().isRegistered(p.getName())) {
+            p.sendMessage(ChatColor.YELLOW + "Bem-vindo! Use /register <senha> <repita a senha> ou /registro <senha> <repita a senha> para se registrar.");
+        } else {
+            p.sendMessage(ChatColor.YELLOW + "Você já está registrado. Use /login <senha> ou /logar <senha> para entrar.");
         }
-        p.sendMessage(ChatColor.YELLOW + "Use /register <senha> ou /login <senha>");
+    }
+
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent e) {
+        module.getLoginTask().removePlayer(e.getPlayer());
     }
 }
