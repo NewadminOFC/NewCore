@@ -1,0 +1,186 @@
+// File: src/main/java/n/plugins/NewCommandManager.java
+package n.plugins;
+
+import n.plugins.chat.NewChat;
+import n.plugins.chat.NewColors;
+import n.plugins.NewEdit.NewWorldEdit;
+import n.plugins.NewEdit.NewWorldGuard;
+import n.plugins.NewMultiverso.MVCommand;
+import n.plugins.NewMultiverso.MVTPCommand;
+import n.plugins.NewMultiverso.NewWorldsPlugin;
+import n.plugins.warps.NewWarps;
+import n.plugins.NewTrash.NewTrash;
+import n.plugins.NewEconomy.NewEconomy;
+import n.plugins.NewEconomy.NewEconomyAPI;
+import n.plugins.NewEssentials.enderchest;
+import n.plugins.NewEssentials.Spawncmd;
+import n.plugins.NewEssentials.Tpacmd;
+import n.plugins.NewLogin.NewLogin;
+import n.plugins.NewLogin.LoginCommand;
+import n.plugins.NewLogin.NewLoginCommand;
+
+import org.bukkit.Bukkit;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.event.Listener;
+
+/**
+ * Classe que centraliza TODO o registro de comandos e listeners.
+ */
+public class NewCommandManager {
+
+    private final NewCore plugin;
+
+    // módulos
+    private NewChat chat;
+    private NewColors colors;
+    private NewWorldEdit worldEdit;
+    private NewWorldGuard worldGuard;
+    private NewWorldsPlugin mvCore;
+    private MVCommand mv;
+    private MVTPCommand mvtp;
+    private NewWarps warps;
+    private NewTrash trash;
+    private enderchest ec;
+    private Spawncmd spawn;
+    private Tpacmd tpa;
+    private NewEconomy economy;
+    private NewLogin newLogin; // <<< adicionado
+
+    public NewCommandManager(NewCore plugin) {
+        this.plugin = plugin;
+    }
+
+    public void registerAll() {
+        // ===== CHAT =====
+        chat = new NewChat(plugin);
+        registerListener(chat);
+        bind("g", chat);
+        bind("tell", chat);
+        bind("chat", chat);
+
+        colors = new NewColors(chat);
+        registerListener(colors);
+        bind("cores", colors);
+
+        // ===== WORLD EDIT / GUARD =====
+        worldEdit = new NewWorldEdit(plugin);
+        registerListener(worldEdit);
+
+        // comandos básicos
+        bind("wand", worldEdit);
+        bind("pos1", worldEdit);
+        bind("pos2", worldEdit);
+        bind("set", worldEdit);
+        bind("replace", worldEdit);
+        bind("undo", worldEdit);
+        bind("redo", worldEdit);
+        bind("copy", worldEdit);
+        bind("paste", worldEdit);
+        bind("cut", worldEdit);
+
+        // seleção e manipulação
+        bind("pos0", worldEdit);
+        bind("desel", worldEdit);
+        bind("hpos1", worldEdit);
+        bind("hpos2", worldEdit);
+        bind("expand", worldEdit);
+        bind("contract", worldEdit);
+        bind("stack", worldEdit);
+        bind("move", worldEdit);
+        bind("rotate", worldEdit);
+        bind("flip", worldEdit);
+
+        // info / análises
+        bind("size", worldEdit);
+        bind("count", worldEdit);
+        bind("distr", worldEdit);
+
+        // formas geométricas
+        bind("cyl", worldEdit);
+        bind("sphere", worldEdit);
+        bind("elipse", worldEdit);
+        bind("ellipsoid", worldEdit);
+        bind("up", worldEdit);
+
+        worldGuard = new NewWorldGuard(worldEdit);
+        worldGuard.init(plugin);
+
+        // ===== MULTIVERSO =====
+        mvCore = new NewWorldsPlugin(plugin);
+        mvCore.carregarMundosExistentes();
+
+        mv = new MVCommand(mvCore);
+        bind("mv", mv);
+
+        mvtp = new MVTPCommand(mvCore);
+        bind("mvtp", mvtp);
+
+        // ===== WARPS =====
+        warps = new NewWarps(plugin);
+        registerListener(warps);
+        bind("setwarp", warps);
+        bind("warp", warps);
+        bind("removewarp", warps);
+
+        // ===== NEW TRASH =====
+        trash = new NewTrash(plugin);
+        registerListener(trash);
+        bind("newtrash", trash);
+
+        // ===== NEW ESSENTIALS =====
+        ec = new enderchest();
+        bind("ec", ec);
+
+        spawn = new Spawncmd(plugin);
+        bind("spawn", spawn);
+        bind("setspawn", spawn);
+
+        tpa = new Tpacmd(plugin);
+        bind("tpa", tpa);
+        bind("tpahere", tpa);
+        bind("tpaccept", tpa);
+        bind("tpdeny", tpa);
+
+        // ===== NEW ECONOMY =====
+        economy = new NewEconomy();
+        economy.onEnable(plugin); // inicializa SQLite + config
+        NewEconomyAPI.register(economy);
+        bind("money", economy);
+
+        // ===== NEW LOGIN =====
+        newLogin = new NewLogin(plugin);
+        newLogin.init();
+        bind("register", new LoginCommand(newLogin));
+        bind("login", new LoginCommand(newLogin));
+        bind("newlogin", new NewLoginCommand(newLogin));
+
+        plugin.getLogger().info("[NewCommandManager] Todos comandos e listeners carregados.");
+    }
+
+    // ===== HELPERS =====
+    private void bind(String name, CommandExecutor exec) {
+        PluginCommand c = plugin.getCommand(name);
+        if (c == null) {
+            plugin.getLogger().warning("Comando não encontrado no plugin.yml: /" + name);
+            return;
+        }
+        c.setExecutor(exec);
+        if (exec instanceof TabCompleter) {
+            c.setTabCompleter((TabCompleter) exec);
+        }
+    }
+
+    private void registerListener(Listener l) {
+        Bukkit.getPluginManager().registerEvents(l, plugin);
+    }
+
+    // getters se precisar acessar módulos de fora
+    public NewEconomy getEconomy() { return economy; }
+    public NewWorldEdit getWorldEdit() { return worldEdit; }
+    public NewWorldGuard getWorldGuard() { return worldGuard; }
+    public Tpacmd getTpa() { return tpa; }
+    public Spawncmd getSpawn() { return spawn; }
+    public NewLogin getNewLogin() { return newLogin; } // getter para login
+}

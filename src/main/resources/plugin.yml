@@ -1,8 +1,7 @@
 name: NewCore
 main: n.plugins.NewCore
 version: 1.0
-author: NewPlugins
-softdepend: [PlaceholderAPI]   # NewChat usa se estiver carregado
+author: NewAdminOFC
 
 commands:
   # ===== Chat =====
@@ -62,6 +61,21 @@ commands:
     permission: newtrash.use
     aliases: []
 
+  # ===== NewEssentials =====
+  ec:           {description: Abre o EnderChest do jogador, usage: "/ec", permission: new.ec}
+  spawn:        {description: Teleporta para o spawn (SQLite), usage: "/spawn", permission: new.spawn}
+  setspawn:     {description: Define o spawn (SQLite), usage: "/setspawn", permission: new.setspawn}
+  tpa:          {description: Pede teleporte até um jogador, usage: "/tpa <jogador>", permission: new.tpa}
+  tpahere:      {description: Pede para trazer um jogador até você, usage: "/tpahere <jogador>", permission: new.tpahere}
+  tpaccept:     {description: Aceita o pedido de TPA mais recente, usage: "/tpaccept", permission: new.tpaccept}
+  tpdeny:       {description: Recusa o pedido de TPA mais recente, usage: "/tpdeny", permission: new.tpdeny}
+
+  # ===== NewEconomy =====
+  money:
+    description: Gerencia economia (/money, /pay, /give, /take, /set, /top, /reload)
+    usage: /money [pay|give|take|set|top|reload]
+    aliases: [pay, eco, balance]
+
 permissions:
   # ===== NewChat =====
   newchat.chat:      {default: true}
@@ -74,7 +88,7 @@ permissions:
   new.wand:       {default: op}
   new.pos:        {default: op}
   new.pos0:       {default: op}
-  new.hpos:       {default: op}   # cobre hpos1/hpos2
+  new.hpos:       {default: op}
   new.desel:      {default: op}
   new.set:        {default: op}
   new.replace:    {default: op}
@@ -97,6 +111,18 @@ permissions:
   new.elipse:     {default: op}
   new.ellipsoid:  {default: op}
   new.up:         {default: op}
+
+  # ===== NewEssentials =====
+  new.ec:        {default: true}
+  new.spawn:     {default: true}
+  new.setspawn:  {default: op}
+  new.tpa:       {default: true}
+  new.tpahere:   {default: true}
+  new.tpaccept:  {default: true}
+  new.tpdeny:    {default: true}
+
+  # ===== NewEconomy =====
+  neweconomy.admin: {default: op}
 
   # pacote completo
   new.*:
@@ -128,6 +154,16 @@ permissions:
       new.elipse: true
       new.ellipsoid: true
       new.up: true
+      # Essentials
+      new.ec: true
+      new.spawn: true
+      new.setspawn: true
+      new.tpa: true
+      new.tpahere: true
+      new.tpaccept: true
+      new.tpdeny: true
+      # Economy
+      neweconomy.admin: true
 
   # ===== NewWorldGuard =====
   newwg.bypass:      {default: op}

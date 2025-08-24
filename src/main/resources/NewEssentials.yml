@@ -1,0 +1,88 @@
+# ==========================
+# Configuração do NewEssentials
+# (EnderChest + Spawn/SetSpawn)
+# ==========================
+
+enderchest:
+  enabled: true
+  require-permission: true
+  cooldown-seconds: 5
+  play-sound: true
+  sound: "CHEST_OPEN"    # Som usado no /ec (1.7.10)
+  silent-open: false
+  blocked-worlds: []     # ex.: ["world_nether", "world_pvp"]
+  messages:
+    only-player: "&cComando apenas in-game."
+    no-permission: "&cVocê não tem permissão para usar /ec."
+    disabled: "&cO comando /ec está desativado neste servidor."
+    cooldown: "&eAguarde &f%sec%s &epara usar /ec novamente."
+    blocked-world: "&cVocê não pode usar /ec neste mundo."
+    opened: "&aEnder Chest aberto."
+
+spawn:
+  enabled:
+    spawn: true        # habilita /spawn
+    setspawn: true     # habilita /setspawn
+  require-permission:
+    spawn: true        # exige permissão "new.spawn"
+    setspawn: true     # exige permissão "new.setspawn"
+  cooldown-seconds: 0   # tempo de espera entre usos de /spawn
+  warmup-seconds: 0     # tempo de preparação (contagem regressiva)
+  cancel-on-move: true  # cancela se o player se mover no warmup
+  first-join-teleport: false  # teleportar no primeiro login
+  play-sound: true
+  sound: "LEVEL_UP"     # Som usado ao teleportar (1.7.10)
+  blocked-worlds: []    # mundos onde não pode usar spawn
+  messages:
+    only-player: "&cApenas jogadores podem usar esse comando."
+    no-perm-set: "&cVocê não tem permissão para usar /setspawn."
+    no-perm-spawn: "&cVocê não tem permissão para usar /spawn."
+    disabled: "&cEste comando está desativado."
+    blocked-world: "&cVocê não pode usar este comando neste mundo."
+    spawn-set: "&aSpawn definido com sucesso!"
+    spawn-tp: "&aTeleportado para o spawn."
+    spawn-not-set: "&cO spawn ainda não foi definido."
+    cooldown: "&eAguarde &f%sec%s &epara usar /spawn novamente."
+    warmup: "&7Teleportando em &f%sec%s&7. Não se mova!"
+    cancelled: "&cTeleporte cancelado por movimento."
+    sql-fail: "&cFalha ao acessar banco de dados. Veja o console."
+
+
+tpa:
+  enabled: true
+  require-permission:
+    tpa: true
+    tpahere: true
+    tpaccept: true
+    tpdeny: true
+  timeout-seconds: 60
+  cooldown-seconds: 5
+  play-sound: true
+  sound:
+    request: "CLICK"
+    accept: "LEVEL_UP"
+    deny: "VILLAGER_NO"
+  allow-cross-world: true
+  blocked-worlds:
+    send: []   # ex.: ["world_pvp"]
+    recv: []   # ex.: ["world_event"]
+  messages:
+    only-player: "&cApenas jogadores podem usar este comando."
+    disabled: "&cSistema de TPA está desativado."
+    no-perm: "&cVocê não tem permissão para isso."
+    player-offline: "&cJogador offline ou não encontrado."
+    self: "&cVocê não pode enviar pedido para si mesmo."
+    world-blocked-send: "&cVocê não pode enviar TPA a partir deste mundo."
+    world-blocked-recv: "&cEste jogador não pode receber TPA no mundo atual."
+    cross-world: "&cTPA entre mundos diferentes está desativado."
+    cooldown: "&eAguarde &f%sec%s &epara enviar outro pedido."
+    request-sent: "&aPedido de teleporte enviado para &f%target%&a."
+    request-received: "&e%from% &7solicitou teleporte %mode% &epara você. &7Use &a/tpaccept &7ou &c/tpdeny &7(em %sec%s)."
+    expired-sender: "&eSeu pedido de TPA para &f%target% &eexpirou."
+    expired-target: "&eO pedido de TPA de &f%from% &eexpirou."
+    no-pending: "&eVocê não tem pedidos pendentes."
+    accepted-sender: "&a%target% aceitou seu pedido. Teleportando..."
+    accepted-target: "&aVocê aceitou o pedido de &f%from%&a."
+    denied-sender: "&c%target% recusou seu pedido de TPA."
+    denied-target: "&eVocê recusou o pedido de &f%from%&e."
+    tp-done: "&aTeleporte concluído."

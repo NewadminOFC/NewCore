@@ -22,7 +22,6 @@ public class NewWarps implements Listener, CommandExecutor, TabCompleter {
 
     public NewWarps(JavaPlugin core) {
         this.core = core;
-        mostrarTitle();
         loadConfigWarps();
     }
 
@@ -217,19 +216,6 @@ public class NewWarps implements Listener, CommandExecutor, TabCompleter {
             first = false;
         }
         return sb.toString();
-    }
-
-    /* ==================== TITLE ==================== */
-    public void mostrarTitle() {
-        core.getLogger().info("  _   _                    __          __                             ");
-        core.getLogger().info(" | \\ | |                   \\ \\        / /                             ");
-        core.getLogger().info(" |  \\| |   ___  __      __  \\ \\  /\\  / /    __ _   _ __   _ __    ___ ");
-        core.getLogger().info(" | . ` |  / _ \\ \\ \\ /\\ / /   \\ \\/  \\/ /    / _` | | '__| | '_ \\  / __|");
-        core.getLogger().info(" | |\\  | |  __/  \\ V  V /     \\  /\\  /    | (_| | | |    | |_) | \\__ \\");
-        core.getLogger().info(" |_| \\_|  \\___|   \\_/\\_/       \\/  \\/      \\__,_| |_|    | .__/  |___/");
-        core.getLogger().info("                                                         | |          ");
-        core.getLogger().info("                                                         |_|          ");
-        core.getLogger().info("Website:   newplugins.shop     Discord:    discord.gg/animesverse");
     }
 
     // compat 1.8+

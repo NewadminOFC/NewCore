@@ -1,0 +1,82 @@
+# =========================
+#  NewEconomy - Config
+# =========================
+
+prefix: "&b[Money]&r "
+
+currency:
+  symbol: "R$"
+  space_after_symbol: true
+  decimals: 2
+  decimal_separator: ","
+  thousand_separator: "."
+  format: "{symbol}{space}{value}"
+
+start_balance:
+  enabled: true
+  amount_cents: 10000
+  only_first_join: true
+
+payments:
+  min_pay_cents: 100
+  max_pay_cents: 10000000
+  allow_self_pay: false
+  allow_offline_pay: true
+  fee:
+    enabled: false
+    percent: 5.0
+
+top:
+  size: 10
+
+permissions:
+  admin: "neweconomy.admin"
+
+commands:
+  enable:
+    balance_self: true
+    balance_other: true
+    pay: true
+    give: true
+    take: true
+    top: true
+    reload: true
+
+messages:
+  # gerais
+  no_permission: "&cVocê não tem permissão."
+  only_players: "&cApenas jogadores."
+  invalid_value: "&cValor inválido."
+  player_not_found: "&cJogador não encontrado."
+  not_enough_money: "&cVocê não tem dinheiro suficiente."
+  reloaded: "&aConfig recarregada."
+  command_disabled: "&cEste comando está desativado."
+
+  # saldos
+  your_balance: "&aSeu saldo: &f{amount}"
+  other_balance: "&aSaldo de &f{player}&a: &f{amount}"
+
+  # pay
+  pay_usage: "&eUso: /money pay <nick> <valor>"
+  pay_self_blocked: "&cVocê não pode pagar a si mesmo."
+  pay_sent: "&aVocê pagou &f{amount} &apara &f{target}"
+  pay_received: "&aVocê recebeu &f{amount} &ade &f{player}"
+  pay_offline_blocked: "&cNão é permitido pagar jogadores offline."
+  pay_below_min: "&cValor mínimo para pagar é &f{amount}"
+  pay_above_max: "&cValor máximo para pagar é &f{amount}"
+  pay_fee_info: "&7Taxa aplicada: &f{amount}"
+
+  # give / take / set
+  give_usage: "&eUso: /money give <nick> <valor>"
+  take_usage: "&eUso: /money take <nick> <valor>"
+  set_usage:  "&eUso: /money set <nick> <valor>"
+  gave_money: "&aVocê deu &f{amount} &apara &f{target}"
+  took_money: "&cVocê removeu &f{amount} &cde &f{target}"
+  set_money:  "&eVocê definiu o saldo de &f{target} &epara &f{amount}"
+
+  # /money top
+  top_header: "&6=== Top Money ==="
+  top_line: "&e#{pos} &f{player} &7- &f{amount}"
+  top_footer: ""
+  top_empty: "&7Ninguém no ranking ainda."
+  top_error: "&cErro ao carregar TOP."

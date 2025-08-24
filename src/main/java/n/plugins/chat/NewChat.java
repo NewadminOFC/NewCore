@@ -1,6 +1,5 @@
 package n.plugins.chat;
 
-import me.clip.placeholderapi.PlaceholderAPI;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.Command;
@@ -31,7 +30,6 @@ public class NewChat implements Listener, CommandExecutor {
         this.core = core;
         loadConfigChat();
         this.chatRadius = cfg.getDouble("chat-radius", 20.0);
-        mostrarTitle();
         core.getLogger().info("[NewChat] pronto.");
         // Observação: registros de Listener/Comandos são feitos pelo NewCore.
     }
@@ -100,11 +98,6 @@ public class NewChat implements Listener, CommandExecutor {
                         .replace("{target}", target.getName())
                         .replace("{message}", playerMessage);
 
-                if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-                    toTarget = PlaceholderAPI.setPlaceholders(target, toTarget);
-                    toSender = PlaceholderAPI.setPlaceholders(sender, toSender);
-                }
-
                 target.sendMessage(toTarget);
                 sender.sendMessage(toSender);
             } else {
@@ -119,10 +112,6 @@ public class NewChat implements Listener, CommandExecutor {
         String format = getPrefix() + getMessage("local-format");
         String message = format.replace("{player}", sender.getDisplayName())
                 .replace("{message}", playerMessage);
-
-        if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            message = PlaceholderAPI.setPlaceholders(sender, message);
-        }
 
         event.setCancelled(true);
 
@@ -163,10 +152,6 @@ public class NewChat implements Listener, CommandExecutor {
             String format = getPrefix() + getMessage("global-format")
                     .replace("{player}", (sender instanceof Player) ? ((Player) sender).getDisplayName() : sender.getName())
                     .replace("{message}", msg);
-
-            if (sender instanceof Player && Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-                format = PlaceholderAPI.setPlaceholders((Player) sender, format);
-            }
 
             for (Player p : Bukkit.getOnlinePlayers()) p.sendMessage(format);
             return true;
@@ -222,11 +207,6 @@ public class NewChat implements Listener, CommandExecutor {
                         .replace("{target}", target.getName())
                         .replace("{message}", msg);
 
-                if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-                    toTarget = PlaceholderAPI.setPlaceholders(target, toTarget);
-                    toSender = PlaceholderAPI.setPlaceholders(playerSender, toSender);
-                }
-
                 target.sendMessage(toTarget);
                 playerSender.sendMessage(toSender);
                 return true;
@@ -262,16 +242,5 @@ public class NewChat implements Listener, CommandExecutor {
             sb.append(a[i]);
         }
         return sb.toString();
-    }
-
-    /* ========= Banner ========= */
-    public void mostrarTitle() {
-        core.getLogger().info("  _   _                      _____   _               _   ");
-        core.getLogger().info(" | \\ | |                    / ____| | |             | |  ");
-        core.getLogger().info(" |  \\| |   ___  __      __ | |      | |__     __ _  | |_ ");
-        core.getLogger().info(" | . ` |  / _ \\ \\ \\ /\\ / / | |      | '_ \\   / _` | | __|");
-        core.getLogger().info(" | |\\  | |  __/  \\ V  V /  | |____  | | | | | (_| | | |_ ");
-        core.getLogger().info(" |_| \\_|  \\___|   \\_/\\_/    \\_____| |_| |_|  \\__,_|  \\__|");
-        core.getLogger().info("Website:   newplugins.shop     Discord:    discord.gg/animesverse");
     }
 }

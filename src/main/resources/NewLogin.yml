@@ -1,0 +1,5 @@
+senha:
+  min: 4
+  max: 16
+spawn: null
+saida: null
