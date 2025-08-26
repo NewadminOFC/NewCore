@@ -11,17 +11,13 @@ public final class NewCore extends JavaPlugin {
     @Override
     public void onEnable() {
         mostrartitle();
-
-        // inicializa o gerenciador de comandos/módulos
         commandManager = new NewCommandManager(this);
         commandManager.registerAll();
-
         getLogger().info("[NewCore] módulos carregados com sucesso.");
     }
 
     @Override
     public void onDisable() {
-        // chama shutdown dos módulos que precisam encerrar
         if (commandManager != null) {
             if (commandManager.getNewLogin() != null) {
                 commandManager.getNewLogin().shutdown();
@@ -41,6 +37,9 @@ public final class NewCore extends JavaPlugin {
             if (commandManager.getEconomy() != null) {
                 commandManager.getEconomy().onDisable();
             }
+            if (commandManager.getPlots() != null) {
+                commandManager.getPlots().shutdown();
+            }
         }
     }
 
@@ -55,7 +54,6 @@ public final class NewCore extends JavaPlugin {
         Bukkit.getConsoleSender().sendMessage("§a| §aDesenvolvido Com ODIO por NewAdminOFC.");
     }
 
-    // getter para acessar o gerenciador de comandos se precisar
     public NewCommandManager getCommandManager() {
         return commandManager;
     }

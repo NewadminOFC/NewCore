@@ -1,0 +1,7 @@
+# File: src/main/resources/newplots.yml
+world: "terrenos"
+plotSize: 64
+gap: 5
+price_cents: 100000
+road_id: 44
+road_data: 0

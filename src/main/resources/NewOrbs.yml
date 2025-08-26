@@ -1,0 +1,106 @@
+# Configurado menu das orbs
+menu:
+  # Título do menu principal
+  title: '&cTrocar Orbs'
+
+  # Textos do menu
+  info-title: '&6Informações'
+  info-lore1: '&eTroque seus orbs por TPs!'
+  info-lore-bonus: '&eBônus atual: &f%bonus%%'
+  info-lore-base: '&eValor base: &f%base% TPs por orb'
+
+  option-title: '&aTrocar %amount% Orbs'
+  option-all-title: '&aTrocar TODOS Orbs'
+  option-lore: '&7Clique para trocar %amount% orbs'
+  option-all-lore: '&7Clique para trocar todos os seus orbs'
+  option-amount: '&7Você possui: &e%amount%'
+  option-receive: '&7Você receberá &e%value% TPs'
+
+# Configuração para fallback (NÃO ALTERAR)
+item:
+  id: 4146
+  data: 0
+  name: 'Orbe'
+  base-value: 1350
+
+# Configurações gerais
+config:
+  # Prefixo do servidor usado nas mensagens
+  server-prefix: '&3&lWOrbs '
+  # Comando para dar TPs (use %player% e %value%)
+  tp-command: 'jrmctp %value% %player%'
+
+# Configuração de bônus (percentual)
+bonus:
+  level1: 10
+  level2: 20
+  level3: 30
+  level4: 40
+  level5: 50
+  level6: 60
+  level7: 70
+  level8: 80
+  level9: 90
+  level10: 100
+  level11: 110
+  level12: 120
+
+# Permissões correspondentes aos bônus
+permissions:
+  level1: 'DBC.bonus10'
+  level2: 'DBC.bonus20'
+  level3: 'DBC.bonus30'
+  level4: 'DBC.bonus40'
+  level5: 'DBC.bonus50'
+  level6: 'DBC.bonus60'
+  level7: 'DBC.bonus70'
+  level8: 'DBC.bonus80'
+  level9: 'DBC.bonus90'
+  level10: 'DBC.bonus100'
+  level11: 'DBC.bonus110'
+  level12: 'DBC.bonus120'
+
+# Configuração de orbs
+orbs:
+  # Orb verde
+  green:
+    id: 4146
+    data: 0
+    name: 'Orbe Verde'
+    base-value: 1350
+    menu-title: '&aTrocar Orbs Verdes'
+
+  # Orb azul
+  blue:
+    id: 4146
+    data: 1
+    name: 'Orbe Azul'
+    base-value: 2700
+    menu-title: '&bTrocar Orbs Azuis'
+
+  # Orb roxo
+  purple:
+    id: 4146
+    data: 2
+    name: 'Orbe Roxo'
+    base-value: 5400
+    menu-title: '&5Trocar Orbs Roxos'
+
+  # Orb dourado
+  gold:
+    id: 4146
+    data: 3
+    name: 'Orbe Dourado'
+    base-value: 10800
+    menu-title: '&6Trocar Orbs Dourados'
+
+# Mensagens personalizadas do sistema
+messages:
+  insufficient-orbs: '%prefix% &cVocê não possui orbs suficientes para trocar.'
+  trade-title: '%prefix% &aVocê trocou seus orbs por TPs com sucesso!'
+  trade-with-bonus: '%prefix% &eVocê recebeu &f%value% TPs &e(Bônus de &f%bonus%%&e)'
+  trade-no-bonus: '%prefix% &eVocê recebeu &f%value% TPs'
+
+  # Placeholders internas (linhas de detalhe)
+  bonus: '&a&e     &bBônus &f(%bonus%.0%%)'
+  value: '&e     &f+%value% &eTPs.'

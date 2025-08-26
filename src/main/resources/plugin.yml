@@ -34,11 +34,21 @@ commands:
   size:         {description: Info da seleção}
   count:        {description: Contar blocos}
   distr:        {description: Distribuição de blocos}
-  cyl:          {description: Cria cilindro, usage: "/<command> <bloco> <raio> [altura]"}
-  sphere:       {description: Cria esfera, usage: "/<command> <bloco> <raio>"}
-  elipse:       {description: Cria elipse 2D, usage: "/<command> <bloco> <raioX> <raioZ>"}
-  ellipsoid:    {description: Cria elipsoide 3D, usage: "/<command> <bloco> <raioX> <raioY> <raioZ>"}
-  up:           {description: Sobe o jogador N blocos, usage: "/<command> [altura]"}
+  cyl:
+    description: Cria cilindro
+    usage: "/<command> <bloco> <raio> [altura]"
+  sphere:
+    description: Cria esfera
+    usage: "/<command> <bloco> <raio>"
+  elipse:
+    description: Cria elipse 2D
+    usage: "/<command> <bloco> <raioX> <raioZ>"
+  ellipsoid:
+    description: Cria elipsoide 3D
+    usage: "/<command> <bloco> <raioX> <raioY> <raioZ>"
+  up:
+    description: Sobe o jogador N blocos
+    usage: "/<command> [altura]"
 
   # ===== WorldGuard =====
   rg:           {description: Regiões, aliases: [region]}
@@ -61,13 +71,34 @@ commands:
     aliases: []
 
   # ===== NewEssentials =====
-  ec:           {description: Abre o EnderChest do jogador, usage: "/ec", permission: new.ec}
-  spawn:        {description: Teleporta para o spawn (SQLite), usage: "/spawn", permission: new.spawn}
-  setspawn:     {description: Define o spawn (SQLite), usage: "/setspawn", permission: new.setspawn}
-  tpa:          {description: Pede teleporte até um jogador, usage: "/tpa <jogador>", permission: new.tpa}
-  tpahere:      {description: Pede para trazer um jogador até você, usage: "/tpahere <jogador>", permission: new.tpahere}
-  tpaccept:     {description: Aceita o pedido de TPA mais recente, usage: "/tpaccept", permission: new.tpaccept}
-  tpdeny:       {description: Recusa o pedido de TPA mais recente, usage: "/tpdeny", permission: new.tpdeny}
+  ec:
+    description: Abre o EnderChest do jogador
+    usage: "/ec"
+    permission: new.ec
+  spawn:
+    description: Teleporta para o spawn (SQLite)
+    usage: "/spawn"
+    permission: new.spawn
+  setspawn:
+    description: Define o spawn (SQLite)
+    usage: "/setspawn"
+    permission: new.setspawn
+  tpa:
+    description: Pede teleporte até um jogador
+    usage: "/tpa <jogador>"
+    permission: new.tpa
+  tpahere:
+    description: Pede para trazer um jogador até você
+    usage: "/tpahere <jogador>"
+    permission: new.tpahere
+  tpaccept:
+    description: Aceita o pedido de TPA mais recente
+    usage: "/tpaccept"
+    permission: new.tpaccept
+  tpdeny:
+    description: Recusa o pedido de TPA mais recente
+    usage: "/tpdeny"
+    permission: new.tpdeny
 
   # ===== NewEconomy =====
   money:
@@ -81,24 +112,39 @@ commands:
     usage: /register <senha>
     permission: ""
     aliases: []
-
   login:
     description: Faz login na sua conta
     usage: /login <senha>
     permission: ""
     aliases: []
-
   newlogin:
     description: Comandos administrativos do login (setspawn/saida)
     usage: /newlogin <setspawn|setsaida>
     permission: newlogin.admin
     aliases: []
-
   resetsenha:
     description: Reseta a senha de um jogador
     usage: /resetsenha <player>
     permission: newlogin.admin
     aliases: []
+
+  # ===== NewPlots =====
+  plot:
+    description: Gerencia plots 128x128 (ruas 5).
+    usage: /plot <claim|tp [jogador]|info|unclaim|where>
+    permission: newplots.use
+
+  # ===== NewGroups =====
+  newgroups:
+    description: Gerencia grupos e permissões (YAML + SQLite)
+    usage: /<command> reload|setgroup|whois|importyaml|exportyaml
+    aliases: [ngroups, ng]
+
+  # ===== NewOrbs =====
+  neworbs:
+    description: Abre o menu de troca de orbs ou recarrega a config.
+    usage: "/neworbs [reload | open <jogador> [orbKey]]"
+    aliases: [orbs, worbs, trocarorbs]
 
 permissions:
   # ===== NewChat =====
@@ -239,3 +285,16 @@ permissions:
   newtrash.admin:
     description: Permite recarregar config e mudar intervalo
     default: op
+
+  # ===== NewPlots =====
+  newplots.use:
+    default: true
+
+  # ===== NewGroups =====
+  newgroups.admin:
+    description: Permite usar os comandos administrativos do NewGroups
+    default: op
+
+  # ===== NewOrbs =====
+  neworbs.use:   {default: true}
+  neworbs.admin: {default: op}

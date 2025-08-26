@@ -1,0 +1,52 @@
+groups:
+  default:
+    default: true
+    prefix: "&7"
+    parents: []
+    permissions:
+      # ====== NewChat ======
+      - newchat.chat
+      - newchat.global
+      - newchat.tell
+      - newchat.cores
+      # ====== NewEssentials básicas ======
+      - new.ec
+      - new.spawn
+      - new.tpa
+      - new.tpahere
+      - new.tpaccept
+      - new.tpdeny
+      # ====== NewTrash ======
+      - newtrash.use
+      # ====== NewPlots ======
+      - newplots.use
+      # ====== grupo "membro" ======
+      - grupo.membro
+
+  vip:
+    default: false
+    prefix: "&6[VIP] "
+    parents: ["default"]
+    permissions:
+      - grupo.vip
+      - warp.vip.bypass
+
+  mod:
+    default: false
+    prefix: "&2[Mod] "
+    parents: ["default"]
+    permissions:
+      - newchat.reload
+      - bukkit.command.tp
+      - bukkit.command.gamemode
+      - warp.reload
+      - newtrash.admin
+
+  admin:
+    default: false
+    prefix: "&c[Admin] "
+    parents: ["mod"]
+    permissions:
+      - "*"   # todas permissões
+
+players:
