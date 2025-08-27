@@ -114,3 +114,53 @@ removelore:
     no-item: "&cVocê precisa segurar um item."
     no-lore: "&cEste item não possui lore."
     removed: "&aLore removida! Restam &f%lines% &alinha(s)."
+
+# ===== ItemEdit =====
+itemedit:
+  enabled: true
+  require-permission: true
+
+  # Bloqueios e restrições
+  blocked-worlds: []
+  allowed-materials: []        # vazio = todos; ex.: ["DIAMOND_SWORD","IRON_SWORD"]
+  materials-blacklist: false   # se true, 'allowed-materials' vira blacklist
+
+  # Limites e regras
+  max-damage-add: 20.0         # limite de bônus (valor absoluto) permitido sem bypass
+  use-nbt-attributes: true     # tenta usar AttributeModifiers por NBT (1.7.10/1.8.x)
+  fallback-to-sharpness: true  # se NBT falhar, usa Sharpness (~1.25 dano/nível no 1.7)
+
+  # UUID fixo do modificador (permite replace limpo do nosso bônus)
+  damage-modifier-uuid-most: 123456789
+  damage-modifier-uuid-least: 987654321
+  damage-modifier-name: "NewEssentials-Damage"
+
+  # Permissões
+  permissions:
+    base: "newess.itemedit"
+    damage: "newess.itemedit.damage"
+    clear: "newess.itemedit.clear"
+    info: "newess.itemedit.info"
+    bypass-limit: "newess.itemedit.bypass.limit"
+    bypass-materials: "newess.itemedit.bypass.materials"
+    bypass-world: "newess.itemedit.bypass.world"
+
+  # Mensagens
+  messages:
+    prefix: "&3&lNew&bEssentials &7» "
+    only-player: "&cApenas jogadores podem usar este comando."
+    disabled: "&cO sistema de edição de item está desativado."
+    no-permission: "&cVocê não tem permissão."
+    blocked-world: "&cVocê não pode usar este comando neste mundo."
+    material-blocked: "&cEste material não é permitido aqui."
+    no-item: "&cVocê precisa segurar um item na mão."
+    invalid-number: "&cValor inválido."
+    over-limit: "&cValor excede o limite de &f%limit%&c."
+    damage-set: "&aBônus de dano definido em &f%amount%&a."
+    damage-added: "&aBônus de dano aumentado em &f%amount%&a. Agora: &f%total%&a."
+    damage-cleared: "&aBônus de dano removido."
+    damage-fallback: "&eNão foi possível aplicar por NBT; usando Sharpness para simular dano (&f+%amount%&e)."
+    info-header: "&7--- &bItem Info&7 ---"
+    info-damage: "&7Bônus de dano (atributo): &f%amount%"
+    info-sharpness: "&7Sharpness: &f%lvl%"
+    error: "&cOcorreu um erro. Veja o console."

@@ -99,6 +99,11 @@ commands:
     description: Recusa o pedido de TPA mais recente
     usage: "/tpdeny"
     permission: new.tpdeny
+  item:
+    description: Edita atributos do item na mão (bônus de dano etc.)
+    usage: "/item edit <info | damage <valor> | damage add <valor> | damage clear | clear>"
+    permission: newess.itemedit
+    aliases: [i, itemedit]
 
   # ===== NewEconomy =====
   money:
@@ -207,6 +212,15 @@ permissions:
   new.tpaccept:  {default: true}
   new.tpdeny:    {default: true}
 
+  # ItemEdit (base e subpermissões)
+  newess.itemedit:                {default: op}
+  newess.itemedit.damage:         {default: op}
+  newess.itemedit.clear:          {default: op}
+  newess.itemedit.info:           {default: true}
+  newess.itemedit.bypass.limit:   {default: op}
+  newess.itemedit.bypass.materials:{default: op}
+  newess.itemedit.bypass.world:   {default: op}
+
   # ===== NewEconomy =====
   neweconomy.admin: {default: op}
 
@@ -253,6 +267,14 @@ permissions:
       new.tpahere: true
       new.tpaccept: true
       new.tpdeny: true
+      # ItemEdit
+      newess.itemedit: true
+      newess.itemedit.damage: true
+      newess.itemedit.clear: true
+      newess.itemedit.info: true
+      newess.itemedit.bypass.limit: true
+      newess.itemedit.bypass.materials: true
+      newess.itemedit.bypass.world: true
       # Economy
       neweconomy.admin: true
       # Login

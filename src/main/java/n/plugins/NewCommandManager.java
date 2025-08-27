@@ -24,6 +24,7 @@ import n.plugins.NewPlots.NewPlots;
 import n.plugins.NewGroups.NewGroup;
 import n.plugins.NewOrbs.NewOrbs;
 import n.plugins.NewEssentials.Rename;
+import n.plugins.NewEssentials.ItemEditCommand; // <- novo comando /item
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.*;
@@ -51,6 +52,7 @@ public class NewCommandManager {
     private NewGroup groups;
     private NewOrbs newOrbs;
     private Rename rename;
+    private ItemEditCommand itemEdit; // <- adicionar referência
 
     public NewCommandManager(NewCore plugin) {
         this.plugin = plugin;
@@ -182,6 +184,10 @@ public class NewCommandManager {
         bind("addlore", rename);
         bind("removelore", rename);
 
+        // ===== Item Edit (/item) =====
+        itemEdit = new ItemEditCommand(plugin);
+        bind("item", itemEdit);
+
         plugin.getLogger().info("[NewCommandManager] Todos comandos e listeners carregados.");
     }
 
@@ -211,4 +217,5 @@ public class NewCommandManager {
     public NewPlots getPlots() { return plots; }
     public NewGroup getGroups() { return groups; }
     public NewOrbs getNewOrbs() { return newOrbs; }
+    public ItemEditCommand getItemEdit() { return itemEdit; } // opcional
 }

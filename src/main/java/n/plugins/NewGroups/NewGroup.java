@@ -13,8 +13,9 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.permissions.PermissionAttachment;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.sql.*;
 import java.util.*;
 import java.util.logging.Level;
@@ -23,29 +24,25 @@ import java.util.logging.Level;
  * NewGroups módulo (1.7.10)
  * - Usa YAML: plugins/NewCore/NewGroups.yml
  * - Usa SQLite: plugins/NewCore/newgroups.db
- * - Comando: /newgroups (reload|setgroup|whois|importyaml|exportyaml)
+ * - Comando: /newgroups (reload|setgroup|whois|importyaml|exportyaml|editor)
  * - Permissão admin: newgroups.admin
  */
 public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
 
-    // ===== Nome do YAML =====
     private static final String YAML_NAME = "NewGroups.yml";
+    private static final String NG_API_BASE = "http://192.168.15.200:25580";
+    private static final String NG_API_TOKEN = "coloque_um_token_opcional";
 
-    // ===== Plugin host =====
     private final JavaPlugin plugin;
 
-    // ===== Memória =====
-    private final Map<String, Group> groups = new LinkedHashMap<String, Group>(); // nome -> grupo
+    private final Map<String, Group> groups = new LinkedHashMap<String, Group>();
     private final Map<UUID, PermissionAttachment> attachments = new HashMap<UUID, PermissionAttachment>();
 
-    // ===== YAML =====
     private File groupsFile;
     private YamlConfiguration groupsConfig;
 
-    // ===== SQLite =====
     private Connection conn;
 
-    // ===== Modelo =====
     private static final class Group {
         final String name;
         final boolean isDefault;
@@ -62,27 +59,23 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         }
     }
 
-    // ===== Ctor =====
     public NewGroup(JavaPlugin plugin) {
         this.plugin = plugin;
     }
 
-    // ===== Ciclo (módulo) =====
     public void init() {
         try {
-            setupYamlFile();   // garante carregar/criar NewGroups.yml
+            setupYamlFile();
             setupSQLite();
             ensureSchema();
 
             boolean dbEmpty = isDatabaseEmpty();
             if (dbEmpty) {
-                // DB vazio -> tenta YAML -> se vazio, semente default -> grava no DB e exporta
                 loadGroupsFromYamlToMemory();
                 if (groups.isEmpty()) seedDefaultInMemory();
                 writeMemoryToDatabase(true);
                 writeMemoryToYaml(true);
             } else {
-                // DB é a fonte -> carrega do DB -> exporta pro YAML
                 loadGroupsFromDatabaseToMemory();
                 writeMemoryToYaml(true);
             }
@@ -97,7 +90,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     }
 
     public void shutdown() {
-        // 1.7.10 -> array
         Player[] online = Bukkit.getServer().getOnlinePlayers().toArray(new Player[0]);
         for (int i = 0; i < online.length; i++) {
             clearAttachment(online[i].getUniqueId());
@@ -108,19 +100,16 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         plugin.getLogger().info("[NewGroups] módulo finalizado.");
     }
 
-    // ===== YAML =====
     private void setupYamlFile() {
         if (!plugin.getDataFolder().exists()) plugin.getDataFolder().mkdirs();
 
         groupsFile = new File(plugin.getDataFolder(), YAML_NAME);
 
-        // cria com conteúdo padrão se não existir
         if (!groupsFile.exists()) {
             try {
                 groupsFile.createNewFile();
                 YamlConfiguration y = new YamlConfiguration();
 
-                // grupo default
                 y.set("groups.default.default", true);
                 y.set("groups.default.prefix", "&7");
                 y.set("groups.default.parents", Collections.emptyList());
@@ -129,13 +118,11 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                         "bukkit.command.list"
                 ));
 
-                // grupo admin
                 y.set("groups.admin.default", false);
                 y.set("groups.admin.prefix", "&c[Admin] ");
                 y.set("groups.admin.parents", Collections.singletonList("default"));
                 y.set("groups.admin.permissions", Collections.singletonList("*"));
 
-                // players vazio
                 y.createSection("players");
 
                 y.save(groupsFile);
@@ -148,7 +135,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         groupsConfig = new YamlConfiguration();
         try {
             groupsConfig.load(groupsFile);
-            // garante seção players
             if (!groupsConfig.isConfigurationSection("players")) {
                 groupsConfig.createSection("players");
                 saveYaml();
@@ -181,7 +167,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             groups.put(key.toLowerCase(Locale.ENGLISH), new Group(key, def, prefix, perms, parents));
         }
 
-        // Garante default
         if (!hasAnyDefault()) {
             if (groups.containsKey("default")) {
                 Group g = groups.get("default");
@@ -232,7 +217,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         return sb.toString();
     }
 
-    // ===== SQLite =====
     private void setupSQLite() throws SQLException {
         try { Class.forName("org.sqlite.JDBC"); }
         catch (ClassNotFoundException e) {
@@ -241,7 +225,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         File dbFile = new File(plugin.getDataFolder(), "newgroups.db");
         String url = "jdbc:sqlite:" + dbFile.getAbsolutePath();
         conn = DriverManager.getConnection(url);
-        // 1.7.10: ativa FKs manualmente
         Statement st = conn.createStatement();
         try { st.execute("PRAGMA foreign_keys=ON"); } finally { try { st.close(); } catch (SQLException ignored) {} }
         conn.setAutoCommit(false);
@@ -401,7 +384,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         }
     }
 
-    // ===== Players (DB/YAML) =====
     private String getPlayerGroupFromDB(UUID uuid) {
         if (uuid == null) return null;
         PreparedStatement ps = null; ResultSet rs = null;
@@ -433,7 +415,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         } finally {
             if (ps != null) try { ps.close(); } catch (SQLException ignored) {}
         }
-        // espelha YAML
         groupsConfig.set("players." + uuid + ".group", group);
         saveYaml();
     }
@@ -445,12 +426,10 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         String yp = groupsConfig.getString("players." + uuid + ".group", null);
         if (yp != null && groups.containsKey(yp.toLowerCase(Locale.ENGLISH))) return yp.toLowerCase(Locale.ENGLISH);
 
-        // default
         for (Group gg : groups.values()) if (gg.isDefault) return gg.name;
         return "default";
     }
 
-    // ===== Permissões =====
     private Set<String> resolvePermissions(String groupName, Set<String> visited) {
         String gname = (groupName == null ? "default" : groupName.toLowerCase(Locale.ENGLISH));
         if (!groups.containsKey(gname)) return Collections.<String>emptySet();
@@ -515,22 +494,43 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     }
 
     private void applyAllOnline() {
-        Player[] arr = Bukkit.getServer().getOnlinePlayers().toArray(new Player[0]); // 1.7.10 retorna array
+        Player[] arr = Bukkit.getServer().getOnlinePlayers().toArray(new Player[0]);
         for (int i = 0; i < arr.length; i++) {
             applyToPlayer(arr[i].getUniqueId());
         }
     }
 
-    // ===== Eventos =====
     @EventHandler public void onJoin(PlayerJoinEvent e) { applyToPlayer(e.getPlayer().getUniqueId()); }
 
-    // ===== Comando /newgroups =====
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!"newgroups".equalsIgnoreCase(command.getName())) return false;
+    public boolean onCommand(final CommandSender sender, Command command, String label, String[] args) {
+        if (!"newgroups".equalsIgnoreCase(command.getName()) && !"newgroup".equalsIgnoreCase(command.getName())) return false;
 
         if (args.length == 0) { sendHelp(sender, label); return true; }
 
         String sub = args[0].toLowerCase(Locale.ENGLISH);
+
+        if ("editor".equals(sub)) {
+            if (!(sender instanceof Player)) { sender.sendMessage(color("&cApenas no jogo.")); return true; }
+            final Player p = (Player) sender;
+            final String serverId = "srv-" + Bukkit.getPort();
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
+                public void run() {
+                    String url = createEditorSession(serverId);
+                    if (url == null) {
+                        Bukkit.getScheduler().runTask(plugin, new Runnable() {
+                            public void run() { p.sendMessage(color("&cFalha ao criar sessão.")); }
+                        });
+                    } else {
+                        final String msg = color("&aLink do editor: &f" + url);
+                        Bukkit.getScheduler().runTask(plugin, new Runnable() {
+                            public void run() { p.sendMessage(msg); }
+                        });
+                    }
+                }
+            });
+            return true;
+        }
+
         if ("reload".equals(sub)) {
             if (!hasAdmin(sender)) { deny(sender); return true; }
             try {
@@ -582,13 +582,13 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         if ("importyaml".equals(sub)) {
             if (!hasAdmin(sender)) { deny(sender); return true; }
             try {
-                setupYamlFile();               // (re)carrega do disco
-                loadGroupsFromYamlToMemory();  // YAML -> memória
+                setupYamlFile();
+                loadGroupsFromYamlToMemory();
                 if (groups.isEmpty()) {
                     sender.sendMessage(color("&cYAML vazio. Nada a importar."));
                     return true;
                 }
-                writeMemoryToDatabase(true);   // memória -> DB
+                writeMemoryToDatabase(true);
                 applyAllOnline();
                 sender.sendMessage(color("&aImportado do YAML para SQLite e reaplicado."));
             } catch (Exception e) {
@@ -600,8 +600,8 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         if ("exportyaml".equals(sub)) {
             if (!hasAdmin(sender)) { deny(sender); return true; }
             try {
-                loadGroupsFromDatabaseToMemory(); // DB -> memória
-                writeMemoryToYaml(true);          // memória -> YAML
+                loadGroupsFromDatabaseToMemory();
+                writeMemoryToYaml(true);
                 sender.sendMessage(color("&aExportado do SQLite para YAML."));
             } catch (SQLException e) {
                 sender.sendMessage(color("&cFalha ao exportar SQLite -> YAML. Veja o console."));
@@ -616,9 +616,10 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
 
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> out = new ArrayList<String>();
-        if (!"newgroups".equalsIgnoreCase(command.getName())) return out;
+        if (!"newgroups".equalsIgnoreCase(command.getName()) && !"newgroup".equalsIgnoreCase(command.getName())) return out;
 
         if (args.length == 1) {
+            out.add("editor");
             out.add("reload");
             out.add("setgroup");
             out.add("whois");
@@ -627,7 +628,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             return out;
         }
         if (args.length == 3 && "setgroup".equalsIgnoreCase(args[0])) {
-            // sugere nomes de grupos
             for (String g : groups.keySet()) out.add(g);
             return out;
         }
@@ -636,6 +636,7 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
 
     private void sendHelp(CommandSender s, String label) {
         s.sendMessage(color("&6=== NewGroups (1.7.10) ==="));
+        s.sendMessage(color("&e/" + label + " editor &7- Abre sessão via API e te envia o link"));
         s.sendMessage(color("&e/" + label + " reload &7- Recarrega do SQLite e exporta pro YAML"));
         s.sendMessage(color("&e/" + label + " setgroup <player> <group> &7- Define grupo do jogador"));
         s.sendMessage(color("&e/" + label + " whois <player> &7- Mostra o grupo do jogador"));
@@ -644,7 +645,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         s.sendMessage(color("&7Grupos: &f" + listGroupNames()));
     }
 
-    // ===== Util =====
     private boolean hasAdmin(CommandSender s) {
         if (s instanceof ConsoleCommandSender) return true;
         return s.hasPermission("newgroups.admin") || s.isOp();
@@ -653,13 +653,11 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     private void deny(CommandSender s) { s.sendMessage(color("&cVocê não tem permissão. (newgroups.admin)")); }
 
     private OfflinePlayer findPlayerByName(String name) {
-        // 1) Online exato (1.7.10 retorna array)
         Player[] arr = Bukkit.getServer().getOnlinePlayers().toArray(new Player[0]);
         for (int i = 0; i < arr.length; i++) {
             Player p = arr[i];
             if (p != null && p.getName() != null && p.getName().equalsIgnoreCase(name)) return p;
         }
-        // 2) Offline conhecidos
         OfflinePlayer[] all = Bukkit.getServer().getOfflinePlayers();
         for (int i = 0; i < all.length; i++) {
             OfflinePlayer op = all[i];
@@ -669,4 +667,80 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     }
 
     private static String color(String s) { return s.replace('&', '§'); }
+
+    private String createEditorSession(String serverId) {
+        HttpURLConnection conn = null;
+        try {
+            URL url = new URL(NG_API_BASE + "/api/v1/editor/sessions");
+            conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(8000);
+            conn.setReadTimeout(12000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            if (NG_API_TOKEN != null && NG_API_TOKEN.length() > 0) {
+                conn.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
+            }
+            String body = "{\"serverId\":\"" + escapeJson(serverId) + "\"}";
+            OutputStream os = conn.getOutputStream();
+            os.write(body.getBytes("UTF-8"));
+            os.flush();
+            os.close();
+
+            int code = conn.getResponseCode();
+            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+            String resp = readAll(is);
+            if (code >= 200 && code < 300) {
+                String urlField = extractJsonString(resp, "url");
+                return urlField;
+            } else {
+                plugin.getLogger().warning("[NewGroups] API erro " + code + ": " + resp);
+                return null;
+            }
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.WARNING, "[NewGroups] Falha chamando API de sessão", t);
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private static String readAll(InputStream is) throws IOException {
+        if (is == null) return "";
+        BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        char[] buf = new char[2048];
+        int r;
+        while ((r = br.read(buf)) != -1) sb.append(buf, 0, r);
+        br.close();
+        return sb.toString();
+    }
+
+    private static String extractJsonString(String json, String field) {
+        if (json == null) return null;
+        String key = "\"" + field + "\"";
+        int i = json.indexOf(key);
+        if (i < 0) return null;
+        int c = json.indexOf(':', i + key.length());
+        if (c < 0) return null;
+        int q1 = json.indexOf('"', c + 1);
+        if (q1 < 0) return null;
+        int q2 = json.indexOf('"', q1 + 1);
+        if (q2 < 0) return null;
+        return json.substring(q1 + 1, q2);
+    }
+
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == '"' || ch == '\\') sb.append('\\').append(ch);
+            else if (ch == '\n') sb.append("\\n");
+            else if (ch == '\r') sb.append("\\r");
+            else if (ch == '\t') sb.append("\\t");
+            else sb.append(ch);
+        }
+        return sb.toString();
+    }
 }
