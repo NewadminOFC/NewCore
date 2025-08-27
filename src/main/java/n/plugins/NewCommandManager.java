@@ -21,7 +21,9 @@ import n.plugins.NewLogin.LoginCommand;
 import n.plugins.NewLogin.NewLoginCommand;
 import n.plugins.NewPlots.NewPlots;
 import n.plugins.NewGroups.NewGroup;
-import n.plugins.NewOrbs.NewOrbs; // <--- importa o módulo NewOrbs
+import n.plugins.NewOrbs.NewOrbs;
+import n.plugins.NewEssentials.Rename;
+
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.*;
@@ -48,6 +50,7 @@ public class NewCommandManager {
     private NewPlots plots;
     private NewGroup groups;
     private NewOrbs newOrbs;
+    private Rename rename;
 
     public NewCommandManager(NewCore plugin) {
         this.plugin = plugin;
@@ -167,6 +170,12 @@ public class NewCommandManager {
         // ===== NewOrbs =====
         this.newOrbs = new NewOrbs(plugin);
         this.newOrbs.register();
+
+        // ===== Rename / Lore =====
+        rename = new Rename(plugin);
+        bind("rename", rename);
+        bind("addlore", rename);
+        bind("removelore", rename);
 
         plugin.getLogger().info("[NewCommandManager] Todos comandos e listeners carregados.");
     }

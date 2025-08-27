@@ -146,6 +146,22 @@ commands:
     usage: "/neworbs [reload | open <jogador> [orbKey]]"
     aliases: [orbs, worbs, trocarorbs]
 
+  # ===== Rename / Lore =====
+  rename:
+    description: Renomeia o item na mão (cores com &)
+    usage: "/rename <nome>"
+    permission: new.rename
+  addlore:
+    description: Adiciona linha(s) de lore ao item na mão (use \\n para quebrar)
+    usage: "/addlore <texto>"
+    permission: new.addlore
+    aliases: [loreadd]
+  removelore:
+    description: Remove linha(s) da lore (1-based) ou 'all'
+    usage: "/removelore <linha|all> [outras linhas]"
+    permission: new.removelore
+    aliases: [rlore, loreremove]
+
 permissions:
   # ===== NewChat =====
   newchat.chat:      {default: true}
@@ -298,3 +314,8 @@ permissions:
   # ===== NewOrbs =====
   neworbs.use:   {default: true}
   neworbs.admin: {default: op}
+
+  # ===== Rename / Lore =====
+  new.rename:     {default: op}
+  new.addlore:    {default: op}
+  new.removelore: {default: op}

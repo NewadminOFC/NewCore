@@ -19,9 +19,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.CreatureSpawnEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
+import org.bukkit.event.player.PlayerBucketFillEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.weather.ThunderChangeEvent;
@@ -57,6 +61,7 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
     private static final int AIR = 0;
     private static final int GRASS = 2;
     private static final int DIRT = 3;
+    private static final int BEDROCK = 7;
 
     private static final String P = "§8§l[§a§lPLOTS§8§l]§r ";
 
@@ -75,7 +80,7 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
         this.priceCents = cfg.getLong("price_cents", 100000L);
         this.roadId = cfg.getInt("road_id", 1);
         this.roadData = (byte) cfg.getInt("road_data", 0);
-        this.roadY = 5;
+        this.roadY = 31;
 
         ensureWorld();
         startDaylock();
@@ -96,7 +101,8 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
             WorldCreator wc = new WorldCreator(worldName);
             wc.type(WorldType.FLAT);
             wc.generateStructures(false);
-            w = Bukkit.createWorld(wc);
+            Bukkit.createWorld(wc);
+            w = Bukkit.getWorld(worldName);
         }
         if (w != null) {
             w.setSpawnFlags(false, false);
@@ -167,41 +173,77 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
         World w = c.getWorld();
         int baseX = c.getX() << 4;
         int baseZ = c.getZ() << 4;
+
+        Map<Long, Boolean> claimCache = new HashMap<>();
+
         for (int dx = 0; dx < 16; dx++) {
             for (int dz = 0; dz < 16; dz++) {
                 int x = baseX + dx;
                 int z = baseZ + dz;
-                if (isRoad(x, z)) paveRoad(w, x, z);
-                else flattenPlot(w, x, z);
+
+                if (isRoad(x, z)) {
+                    paveRoad(w, x, z);
+                } else {
+                    Index idx = toIndex(x, z);
+                    long key = (((long) idx.ix) << 32) ^ (idx.iz & 0xffffffffL);
+                    Boolean claimed = claimCache.get(key);
+                    if (claimed == null) {
+                        claimed = db.findByIndex(worldName, idx.ix, idx.iz).isPresent();
+                        claimCache.put(key, claimed);
+                    }
+                    if (!claimed) flattenPlot(w, x, z);
+                }
             }
         }
     }
 
     private void setBlockNoPhysics(World w, int x, int y, int z, int id, byte data) {
+        if (y < 0 || y > w.getMaxHeight()) return;
         Block b = w.getBlockAt(x, y, z);
         if (b.getTypeId() == id && (id == AIR || b.getData() == data)) return;
         b.setTypeIdAndData(id, data, false);
     }
 
-    private void setAir(World w, int x, int y, int z) {
-        Block b = w.getBlockAt(x, y, z);
-        if (b.getTypeId() != AIR) b.setTypeIdAndData(AIR, (byte) 0, false);
+    private void fillUnderTo31(World w, int x, int z) {
+        Block b0 = w.getBlockAt(x, 0, z);
+        if (b0.getTypeId() != BEDROCK) b0.setTypeIdAndData(BEDROCK, (byte) 0, false);
+        for (int y = 1; y <= 30; y++) {
+            Block by = w.getBlockAt(x, y, z);
+            if (by.getTypeId() == AIR) by.setTypeIdAndData(DIRT, (byte) 0, false);
+        }
     }
 
     private void flattenPlot(World w, int x, int z) {
-        setAir(w, x, roadY + 2, z);
-        setAir(w, x, roadY + 1, z);
-        setBlockNoPhysics(w, x, roadY, z, GRASS, (byte) 0);
-        setBlockNoPhysics(w, x, roadY - 1, z, DIRT, (byte) 0);
-        setBlockNoPhysics(w, x, roadY - 2, z, DIRT, (byte) 0);
+        fillUnderTo31(w, x, z);
+        Block top = w.getBlockAt(x, roadY, z);
+        int id = top.getTypeId();
+        if (id == AIR || id == DIRT || id == GRASS) top.setTypeIdAndData(GRASS, (byte) 0, false);
     }
 
     private void paveRoad(World w, int x, int z) {
-        setAir(w, x, roadY + 2, z);
-        setAir(w, x, roadY + 1, z);
+        fillUnderTo31(w, x, z);
         setBlockNoPhysics(w, x, roadY, z, roadId, roadData);
-        setBlockNoPhysics(w, x, roadY - 1, z, DIRT, (byte) 0);
-        setBlockNoPhysics(w, x, roadY - 2, z, DIRT, (byte) 0);
+    }
+
+    private void resetPlotArea(World w, int ix, int iz) {
+        int baseX = ix * pitch;
+        int baseZ = iz * pitch;
+        int max = w.getMaxHeight() - 1;
+        for (int x = baseX; x < baseX + plotSize; x++) {
+            for (int z = baseZ; z < baseZ + plotSize; z++) {
+                for (int y = roadY + 1; y <= max; y++) {
+                    Block b = w.getBlockAt(x, y, z);
+                    if (b.getTypeId() != AIR) b.setTypeIdAndData(AIR, (byte) 0, false);
+                }
+                fillUnderTo31(w, x, z);
+                setBlockNoPhysics(w, x, roadY, z, GRASS, (byte) 0);
+            }
+        }
+    }
+
+    private void saveWorldSoon(World w) {
+        if (w == null) return;
+        Bukkit.getScheduler().runTaskLater(plugin, w::save, 40L);
     }
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
@@ -225,6 +267,38 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
         if (e.getBlock().getWorld().getName().equals(worldName) && isRoad(e.getBlock().getX(), e.getBlock().getZ())) {
             e.setCancelled(true);
             e.getPlayer().sendMessage(P + "§cVocê não pode quebrar a rua.");
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
+    public void onInteract(PlayerInteractEvent e) {
+        if (e.getAction() != Action.RIGHT_CLICK_BLOCK && e.getAction() != Action.PHYSICAL) return;
+        if (e.getClickedBlock() == null) return;
+        World w = e.getClickedBlock().getWorld();
+        if (!w.getName().equals(worldName)) return;
+        int x = e.getClickedBlock().getX();
+        int z = e.getClickedBlock().getZ();
+        if (isRoad(x, z) || !shouldAllow(e.getPlayer(), e.getClickedBlock().getLocation())) {
+            e.setCancelled(true);
+            if (e.getAction() == Action.RIGHT_CLICK_BLOCK) e.getPlayer().sendMessage(P + "§cVocê não pode usar isso aqui.");
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
+    public void onBucket(PlayerBucketFillEvent e) {
+        if (!e.getPlayer().getWorld().getName().equals(worldName)) return;
+        if (isRoad(e.getBlockClicked().getX(), e.getBlockClicked().getZ()) || !shouldAllow(e.getPlayer(), e.getBlockClicked().getLocation())) {
+            e.setCancelled(true);
+            e.getPlayer().sendMessage(P + "§cAção bloqueada neste local.");
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.HIGH)
+    public void onBucket(PlayerBucketEmptyEvent e) {
+        if (!e.getPlayer().getWorld().getName().equals(worldName)) return;
+        if (isRoad(e.getBlockClicked().getX(), e.getBlockClicked().getZ()) || !shouldAllow(e.getPlayer(), e.getBlockClicked().getLocation())) {
+            e.setCancelled(true);
+            e.getPlayer().sendMessage(P + "§cAção bloqueada neste local.");
         }
     }
 
@@ -406,6 +480,7 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
         center.setWorld(w);
         center.setY(roadY + 1);
         p.teleport(center);
+        saveWorldSoon(w);
         SpawnCompat.setBedSpawn(p, center);
         String priceMsg = free ? "§eGRÁTIS" : "§f" + NewEconomyAPI.format(priceToPay);
         p.sendMessage(P + "§aPlot §8(" + ix + "," + iz + ") §aadquirido por " + priceMsg + "§a.");
@@ -447,6 +522,7 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
         center.setWorld(w);
         center.setY(roadY + 1);
         p.teleport(center);
+        saveWorldSoon(w);
         p.sendMessage(P + "§aTeleportado para §8(" + my.get().ix + "," + my.get().iz + ")§a.");
     }
 
@@ -470,6 +546,7 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
         center.setWorld(w);
         center.setY(roadY + 1);
         p.teleport(center);
+        saveWorldSoon(w);
         p.sendMessage(P + "§aTeleportado para o plot de §f" + (off.getName() != null ? off.getName() : targetName) + " §7em §8(" + rec.get().ix + "," + rec.get().iz + ")§a.");
     }
 
@@ -517,8 +594,14 @@ public class NewPlots implements CommandExecutor, TabCompleter, Listener {
         }
         db.deleteTrusts(worldName, idx.ix, idx.iz);
         boolean ok = db.deleteByIndex(worldName, idx.ix, idx.iz);
-        if (ok) p.sendMessage(P + "§aPlot §8(" + idx.ix + "," + idx.iz + ") §aliberado.");
-        else p.sendMessage(P + "§cFalha ao liberar plot.");
+        if (ok) {
+            World w = p.getWorld();
+            resetPlotArea(w, idx.ix, idx.iz);
+            saveWorldSoon(w);
+            p.sendMessage(P + "§aPlot §8(" + idx.ix + "," + idx.iz + ") §aliberado e limpo.");
+        } else {
+            p.sendMessage(P + "§cFalha ao liberar plot.");
+        }
     }
 
     private void handleWhere(Player p) {
