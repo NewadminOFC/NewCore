@@ -19,11 +19,11 @@ import n.plugins.NewEssentials.Tpacmd;
 import n.plugins.NewLogin.NewLogin;
 import n.plugins.NewLogin.LoginCommand;
 import n.plugins.NewLogin.NewLoginCommand;
+import n.plugins.NewLogin.CommandHideListener; // oculta /login /register /resetsenha do console
 import n.plugins.NewPlots.NewPlots;
 import n.plugins.NewGroups.NewGroup;
 import n.plugins.NewOrbs.NewOrbs;
 import n.plugins.NewEssentials.Rename;
-
 
 import org.bukkit.Bukkit;
 import org.bukkit.command.*;
@@ -151,10 +151,15 @@ public class NewCommandManager {
         // ===== NewLogin =====
         newLogin = new NewLogin(plugin);
         newLogin.init();
-        bind("register", new LoginCommand(newLogin));
-        bind("login", new LoginCommand(newLogin));
-        bind("newlogin", new NewLoginCommand(newLogin));
-        bind("resetsenha", new ResetSenhaCommand(newLogin));
+
+        // >>> PASSA O LoginConfig (newLogin.getConfig()) <<<
+        bind("register",   new LoginCommand(newLogin, newLogin.getConfig()));
+        bind("login",      new LoginCommand(newLogin, newLogin.getConfig()));
+        bind("newlogin",   new NewLoginCommand(newLogin));
+        bind("resetsenha", new ResetSenhaCommand(newLogin, newLogin.getConfig()));
+
+        // Oculta comandos sensíveis do console conforme ConfigLogin.yml
+        registerListener(new CommandHideListener(newLogin.getConfig()));
 
         // ===== NewPlots =====
         plots = new NewPlots(plugin);

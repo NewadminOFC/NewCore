@@ -14,6 +14,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -40,8 +41,8 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
     private String msgNoPerm;
 
     // Filtros (apenas DROPPED_ITEM)
-    private boolean useWhitelist;           // true = remove somente materiais listados
-    private Set<Material> materialList;     // lista para white/blacklist
+    private boolean useWhitelist;
+    private Set<Material> materialList;
 
     // Estado
     private BukkitTask task;
@@ -69,7 +70,7 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
             config.load(configFile);
             readConfigValues();
         } catch (IOException | InvalidConfigurationException e) {
-            plugin.getLogger().severe("[NewTrash] Erro ao carregar newtrash.yml: " + e.getMessage());
+            // Silencioso: usa defaults
             setDefaults();
         }
     }
@@ -95,7 +96,7 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
         msgReloaded = color(config.getString("mensagens.reload", "&aConfiguração recarregada."));
         msgNoPerm = color(config.getString("mensagens.sem_permissao", "&cSem permissão."));
 
-        // Filtros de material (apenas DROPPED_ITEM)
+        // Filtros
         useWhitelist = config.getBoolean("filtros.usar_whitelist", false);
         materialList = new HashSet<Material>();
         List<String> mats = config.getStringList("filtros.materiais");
@@ -132,7 +133,6 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
         y.set("mensagens.reload", "&aConfiguração recarregada.");
         y.set("mensagens.sem_permissao", "&cSem permissão.");
 
-        // Filtros: por padrão, blacklist com exemplos (COBBLESTONE, DIRT)
         y.set("filtros.usar_whitelist", false);
         y.set("filtros.materiais", Arrays.asList("COBBLESTONE", "DIRT"));
 
@@ -142,9 +142,7 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
     public void reload() {
         try {
             config.load(configFile);
-        } catch (IOException | InvalidConfigurationException e) {
-            plugin.getLogger().severe("[NewTrash] Erro ao recarregar: " + e.getMessage());
-        }
+        } catch (IOException | InvalidConfigurationException ignored) {}
         readConfigValues();
         restartTask();
     }
@@ -155,7 +153,7 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
         synchronized (lock) { secondsLeft = intervalSeconds; }
         task = Bukkit.getScheduler().runTaskTimer(plugin, new Runnable() {
             @Override public void run() { tick(); }
-        }, 20L, 20L); // a cada 1s
+        }, 20L, 20L);
     }
 
     private void restartTask() { startTask(); }
@@ -169,23 +167,22 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
         synchronized (lock) { secondsLeft--; left = secondsLeft; }
 
         if (warnAt.contains(left)) {
-            broadcast(prefix + msgWarn.replace("{seg}", String.valueOf(left)));
+            sendPlayers(prefix + msgWarn.replace("{seg}", String.valueOf(left)));
         }
 
         if (left <= 0) {
             int total = clearDroppedItemsOnce();
-            if (total > 0) broadcast(prefix + msgCleared.replace("{qtd}", String.valueOf(total)));
-            else broadcast(prefix + msgNothing);
+            if (total > 0) sendPlayers(prefix + msgCleared.replace("{qtd}", String.valueOf(total)));
+            else sendPlayers(prefix + msgNothing);
             synchronized (lock) { secondsLeft = intervalSeconds; }
         }
     }
 
-    // ===================== LIMPEZA (somente itens dropados) =====================
+    // ===================== LIMPEZA =====================
     private int clearDroppedItemsOnce() {
         int removed = 0;
 
         for (World world : Bukkit.getWorlds()) {
-            // percorre cópia
             List<Entity> entities = new ArrayList<Entity>(world.getEntities());
             for (Entity e : entities) {
                 if (e.getType() != EntityType.DROPPED_ITEM) continue;
@@ -193,24 +190,26 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
                 Item it = (Item) e;
                 Material m = it.getItemStack().getType();
 
-                // Lógica de white/blacklist
                 if (useWhitelist) {
-                    // remove somente se estiver na lista
                     if (!materialList.contains(m)) continue;
                 } else {
-                    // remove tudo, exceto se estiver na blacklist
                     if (materialList.contains(m)) continue;
                 }
 
                 e.remove();
-                // contabiliza pela quantidade total de itens no stack
                 removed += it.getItemStack().getAmount();
             }
         }
         return removed;
     }
 
-    private void broadcast(String msg) { Bukkit.broadcastMessage(msg); }
+    // ===== Envio apenas para jogadores (nada no console) =====
+    private void sendPlayers(String msg) {
+        // 1.7.10: Bukkit.getOnlinePlayers() retorna Player[]
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            p.sendMessage(msg);
+        }
+    }
 
     private String color(String s) {
         return ChatColor.translateAlternateColorCodes('&', s == null ? "" : s);
@@ -245,7 +244,7 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
                 return true;
             }
             int total = clearDroppedItemsOnce();
-            if (total > 0) Bukkit.broadcastMessage(prefix + msgCleared.replace("{qtd}", String.valueOf(total)));
+            if (total > 0) sendPlayers(prefix + msgCleared.replace("{qtd}", String.valueOf(total)));
             else sender.sendMessage(prefix + msgNothing);
             synchronized (lock) { secondsLeft = intervalSeconds; }
             return true;
@@ -282,7 +281,7 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
                 config.set("intervalo.segundos", v);
                 saveConfigSafe();
                 restartTask();
-                sender.sendMessage(prefix + color("&aIntervalo definido para &f"+v+"s&a."));
+                sender.sendMessage(prefix + color("&aIntervalo definido para &f" + v + "s&a."));
             } catch (NumberFormatException e) {
                 sender.sendMessage(color("&cValor inválido."));
             }
@@ -294,10 +293,7 @@ public class NewTrash implements Listener, CommandExecutor, TabCompleter {
     }
 
     private void saveConfigSafe() {
-        try { config.save(configFile); }
-        catch (IOException e) {
-            plugin.getLogger().severe("[NewTrash] Erro ao salvar newtrash.yml: " + e.getMessage());
-        }
+        try { config.save(configFile); } catch (IOException ignored) {}
     }
 
     // ===================== TAB COMPLETE =====================

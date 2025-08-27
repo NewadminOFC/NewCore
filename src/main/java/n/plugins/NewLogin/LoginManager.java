@@ -3,6 +3,7 @@ package n.plugins.NewLogin;
 import n.plugins.NewCore;
 import org.bukkit.entity.Player;
 
+import java.security.SecureRandom;
 import java.sql.*;
 import java.util.HashSet;
 import java.util.Set;
@@ -11,7 +12,10 @@ public class LoginManager {
 
     private final NewCore plugin;
     private Connection connection;
-    private final Set<String> logged = new HashSet<>();
+    private final Set<String> logged = new HashSet<String>();
+
+    private final SecureRandom random = new SecureRandom();
+    private static final String CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
     public LoginManager(NewCore plugin) {
         this.plugin = plugin;
@@ -26,74 +30,79 @@ public class LoginManager {
             st.executeUpdate("CREATE TABLE IF NOT EXISTS accounts (name TEXT PRIMARY KEY, password TEXT)");
             st.close();
         } catch (Exception e) {
-            e.printStackTrace();
+            // Erros de infra/log sem expor dados sensíveis
+            plugin.getLogger().severe("[NewLogin] Erro ao iniciar SQLite: " + e.getMessage());
         }
     }
 
-    // Verifica se o jogador já está registrado
     public boolean isRegistered(String name) {
+        PreparedStatement ps = null; ResultSet rs = null;
         try {
-            PreparedStatement ps = connection.prepareStatement("SELECT name FROM accounts WHERE name=?");
+            ps = connection.prepareStatement("SELECT name FROM accounts WHERE name=?");
             ps.setString(1, name.toLowerCase());
-            ResultSet rs = ps.executeQuery();
-            boolean exists = rs.next();
-            rs.close();
-            ps.close();
-            return exists;
+            rs = ps.executeQuery();
+            return rs.next();
         } catch (SQLException e) {
-            e.printStackTrace();
+            plugin.getLogger().severe("[NewLogin] Erro em isRegistered: " + e.getMessage());
             return false;
+        } finally {
+            closeQuiet(rs); closeQuiet(ps);
         }
     }
 
-    // Registra jogador
     public boolean register(String name, String pass) {
+        PreparedStatement ps = null;
         try {
-            PreparedStatement ps = connection.prepareStatement("INSERT INTO accounts (name,password) VALUES(?,?)");
+            ps = connection.prepareStatement("INSERT INTO accounts (name,password) VALUES(?,?)");
             ps.setString(1, name.toLowerCase());
             ps.setString(2, pass);
             ps.executeUpdate();
-            ps.close();
             return true;
         } catch (SQLException e) {
-            e.printStackTrace();
+            plugin.getLogger().severe("[NewLogin] Erro em register: " + e.getMessage());
             return false;
+        } finally {
+            closeQuiet(ps);
         }
     }
 
-    // Checa se senha está correta
     public boolean checkPassword(String name, String pass) {
+        PreparedStatement ps = null; ResultSet rs = null;
         try {
-            PreparedStatement ps = connection.prepareStatement("SELECT password FROM accounts WHERE name=?");
+            ps = connection.prepareStatement("SELECT password FROM accounts WHERE name=?");
             ps.setString(1, name.toLowerCase());
-            ResultSet rs = ps.executeQuery();
+            rs = ps.executeQuery();
             if (rs.next()) {
                 String real = rs.getString("password");
-                rs.close();
-                ps.close();
-                return real.equals(pass);
+                return real != null && real.equals(pass);
             }
         } catch (SQLException e) {
-            e.printStackTrace();
+            plugin.getLogger().severe("[NewLogin] Erro em checkPassword: " + e.getMessage());
+        } finally {
+            closeQuiet(rs); closeQuiet(ps);
         }
         return false;
     }
 
-    // Reseta a senha de um jogador (utilizado pelo /resetsenha)
-    public boolean resetPassword(String name) {
+    /** Reseta a senha e retorna a nova, ou null se player não registrado */
+    public String resetPassword(String name) {
+        if (!isRegistered(name)) return null;
+        String nova = gerarSenha(8);
+        PreparedStatement ps = null;
         try {
-            PreparedStatement ps = connection.prepareStatement("UPDATE accounts SET password=NULL WHERE name=?");
-            ps.setString(1, name.toLowerCase());
+            ps = connection.prepareStatement("UPDATE accounts SET password=? WHERE name=?");
+            ps.setString(1, nova);
+            ps.setString(2, name.toLowerCase());
             int rows = ps.executeUpdate();
-            ps.close();
-            return rows > 0;
+            if (rows > 0) return nova;
         } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
+            plugin.getLogger().severe("[NewLogin] Erro em resetPassword: " + e.getMessage());
+        } finally {
+            closeQuiet(ps);
         }
+        return null;
     }
 
-    // Marca jogador como logado ou não
     public void setLogged(Player p, boolean state) {
         String key = p.getName().toLowerCase();
         if (state) logged.add(key);
@@ -104,15 +113,23 @@ public class LoginManager {
         return logged.contains(p.getName().toLowerCase());
     }
 
-    // Fecha conexão com banco
     public void close() {
-        try {
-            if (connection != null) connection.close();
-        } catch (SQLException ignored) {}
+        try { if (connection != null && !connection.isClosed()) connection.close(); }
+        catch (SQLException ignored) {}
     }
 
-    // Permite acessar a conexão (para comandos administrativos)
-    public Connection getConnection() {
-        return connection;
+    public Connection getConnection() { return connection; }
+
+    private String gerarSenha(int tamanho) {
+        StringBuilder sb = new StringBuilder(tamanho);
+        for (int i = 0; i < tamanho; i++) {
+            sb.append(CHARS.charAt(random.nextInt(CHARS.length())));
+        }
+        return sb.toString();
+    }
+
+    private void closeQuiet(AutoCloseable c) {
+        if (c == null) return;
+        try { c.close(); } catch (Exception ignored) {}
     }
 }

@@ -1,71 +1,44 @@
 package n.plugins.NewLogin;
 
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
-
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 
 public class ResetSenhaCommand implements CommandExecutor {
 
-    private final NewLogin module;
+    private final NewLogin login;
+    private final LoginConfig cfg;
 
-    public ResetSenhaCommand(NewLogin module) {
-        this.module = module;
+    public ResetSenhaCommand(NewLogin login, LoginConfig cfg) {
+        this.login = login;
+        this.cfg = cfg;
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
-
-        if (!sender.hasPermission("newlogin.resetsenha")) {
-            sender.sendMessage(ChatColor.RED + "Você não tem permissão para isso.");
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!sender.hasPermission("newlogin.admin")) {
+            sender.sendMessage(cfg.getPrefix() + "§cSem permissão.");
             return true;
         }
 
-        if (args.length != 1) {
-            sender.sendMessage(ChatColor.YELLOW + "Use: /resetsenha <player>");
+        if (args.length < 1) {
+            // Reaproveita a msg de uso do register (ou crie uma "usage-resetsenha" se quiser)
+            sender.sendMessage(cfg.msg("usage-register"));
             return true;
         }
 
-        String targetName = args[0].toLowerCase();
+        String alvo = args[0];
+        LoginManager manager = login.getLoginManager();
+        if (manager == null) { sender.sendMessage(cfg.msg("not-initialized")); return true; }
 
-        if (!module.getLoginManager().isRegistered(targetName)) {
-            sender.sendMessage(ChatColor.RED + "O jogador não está registrado!");
+        String novaSenha = manager.resetPassword(alvo);
+        if (novaSenha == null) {
+            sender.sendMessage(cfg.msg("reset-fail").replace("%player%", alvo));
             return true;
         }
 
-        try {
-            Connection conn = module.getLoginManager().getConnection();
-            PreparedStatement ps = conn.prepareStatement("UPDATE accounts SET password=NULL WHERE name=?");
-            ps.setString(1, targetName);
-            ps.executeUpdate();
-            ps.close();
-
-            sender.sendMessage(ChatColor.GREEN + "Senha do jogador " + targetName + " foi resetada.");
-
-            Player target = Bukkit.getPlayer(targetName);
-            if (target != null) {
-                target.sendMessage(ChatColor.YELLOW + "Sua senha foi resetada. Use /register <senha> para criar uma nova.");
-                module.getLoginManager().setLogged(target, false);
-
-                // Teleporta para o spawn definido
-                Location spawn = module.getSpawn();
-                if (spawn != null) {
-                    target.teleport(spawn);
-                }
-            }
-
-        } catch (SQLException e) {
-            sender.sendMessage(ChatColor.RED + "Ocorreu um erro ao resetar a senha.");
-            e.printStackTrace();
-        }
-
+        sender.sendMessage(cfg.msg("reset-success").replace("%player%", alvo));
+        sender.sendMessage(cfg.msg("new-password").replace("%senha%", novaSenha));
         return true;
     }
 }

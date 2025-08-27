@@ -1,25 +1,55 @@
-# --- Configuração de senha ---
-senha:
-  min: 4
-  max: 16
+# ==========================
+# Configuração do sistema de Login
+# ==========================
 
-# --- Timeout para login (em segundos) ---
+geral:
+  enabled: true
+  prefix: "&3&lNew&bLogin &7» "
+  min-password-length: 4
+  max-password-length: 32
+
+  # Bloqueia comandos antes do jogador logar
+  block-commands-before-login: true
+
+  # Comandos permitidos antes do login (sem / e em minúsculas)
+  allowed-commands-before-login:
+    - "login"
+    - "logar"
+    - "register"
+    - "registro"
+
+  # Comandos que NÃO devem aparecer no console (sem / e em minúsculas)
+  hide-from-console:
+    - "login"
+    - "register"
+    - "resetsenha"
+
+on-join:
+  teleport-to-spawn: true     # Teleportar para o spawn ao entrar (se definido)
+
 timeout:
-  tempo_segundos: 60
-  mensagem: "§cVocê foi kickado por inatividade ao logar!"
+  seconds: 60
+  message: "&cVocê foi kickado por inatividade ao logar!"
 
-# --- Spawn e saída ---
-spawn: null      # Local onde o jogador ficará até logar
-saida: null      # Local para teleportar após login
-
-# --- Mensagens personalizáveis ---
 mensagens:
-  registrar_sucesso: "§aRegistrado com sucesso! Use /login <senha>"
-  registrar_erro: "§cErro ao registrar!"
-  ja_registrado: "§cVocê já está registrado!"
-  nao_registrado: "§cVocê não está registrado!"
-  senha_invalida: "§cSenha inválida, precisa ter entre {min} e {max} dígitos!"
-  login_sucesso: "§aLogado com sucesso!"
-  login_erro: "§cSenha incorreta!"
-  deve_logar: "§cVocê deve logar primeiro! (/login <senha>)"
-  usar_comando: "§eUse /register <senha> ou /login <senha>"
+  only-player: "&cApenas jogadores podem usar este comando."
+  not-initialized: "&cSistema de login não inicializado."
+  already-logged: "&eVocê já está logado."
+  not-logged: "&cVocê precisa estar logado para isso."
+  login-success: "&aLogin efetuado com sucesso!"
+  login-fail: "&cSenha incorreta!"
+  usage-login: "&eUso correto: /login <senha>"
+  usage-register: "&eUso correto: /register <senha>"
+  already-registered: "&cVocê já está registrado."
+  register-success: "&aRegistrado com sucesso! Agora use /login <senha>."
+  password-too-short: "&cA senha deve ter pelo menos &f%min% &ccaracteres."
+  password-too-long: "&cA senha deve ter no máximo &f%max% &ccaracteres."
+  reset-success: "&aSenha de %player% foi resetada."
+  reset-fail: "&cJogador %player% não encontrado ou não registrado."
+  new-password: "&eNova senha: &f%senha%"
+  joined-register: "&eBem-vindo! Use &a/register <senha>&e para se registrar."
+  joined-login: "&eVocê já é registrado. Use &a/login <senha>&e para entrar."
+  must-login: "&cVocê precisa se logar primeiro! Use /login ou /register."
+
+# spawn: será preenchido por /newlogin setspawn
+# saida: será preenchido por /newlogin setsaida

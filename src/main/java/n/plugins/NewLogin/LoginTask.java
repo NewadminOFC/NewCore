@@ -8,6 +8,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class LoginTask implements Runnable, Listener {
@@ -15,13 +16,11 @@ public class LoginTask implements Runnable, Listener {
     private final NewCore plugin;
     private final NewLogin module;
     private boolean running = true;
-    private final Map<String, Long> joinTimestamps = new HashMap<>();
+    private final Map<String, Long> joinTimestamps = new HashMap<String, Long>();
 
     public LoginTask(NewCore plugin, NewLogin module) {
         this.plugin = plugin;
         this.module = module;
-
-        // Registrar listener dentro da própria classe
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
@@ -37,15 +36,13 @@ public class LoginTask implements Runnable, Listener {
         Bukkit.getScheduler().runTaskTimer(plugin, this, 20L, 20L);
     }
 
-    public void stop() {
-        running = false;
-    }
+    public void stop() { running = false; }
 
     @Override
     public void run() {
         if (!running) return;
 
-        int timeout = module.getTimeoutSeconds();
+        int timeout = module.getConfig().getTimeoutSeconds();
         long now = System.currentTimeMillis();
 
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -54,7 +51,7 @@ public class LoginTask implements Runnable, Listener {
                 if (joinTime != null) {
                     long elapsed = (now - joinTime) / 1000L;
                     if (elapsed >= timeout) {
-                        p.kickPlayer(module.getTimeoutMessage());
+                        p.kickPlayer(module.getConfig().getTimeoutMessage());
                         joinTimestamps.remove(p.getName().toLowerCase());
                     }
                 } else {
@@ -68,14 +65,19 @@ public class LoginTask implements Runnable, Listener {
 
     @EventHandler
     public void onCommand(PlayerCommandPreprocessEvent e) {
+        if (!module.getConfig().blockCommandsBeforeLogin()) return;
         Player p = e.getPlayer();
-        if (!module.getLoginManager().isLogged(p)) {
-            String msg = e.getMessage().toLowerCase();
-            // Permitir apenas login/register
-            if (!(msg.startsWith("/login") || msg.startsWith("/logar") || msg.startsWith("/register") || msg.startsWith("/registro"))) {
-                e.setCancelled(true);
-                p.sendMessage("§cVocê precisa se logar primeiro! Use /login ou /register.");
-            }
+        if (module.getLoginManager().isLogged(p)) return;
+
+        String msg = e.getMessage().toLowerCase();
+        List<String> allow = module.getConfig().allowedCommandsBeforeLogin();
+
+        // Permite se começar com algum comando permitido
+        for (String c : allow) {
+            if (msg.startsWith("/" + c)) return;
         }
+
+        e.setCancelled(true);
+        p.sendMessage(module.getConfig().msg("must-login"));
     }
 }

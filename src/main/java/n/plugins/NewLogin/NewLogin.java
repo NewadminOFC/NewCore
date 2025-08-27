@@ -1,14 +1,7 @@
 package n.plugins.NewLogin;
 
 import n.plugins.NewCore;
-import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.plugin.PluginManager;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
-
-import java.io.File;
-import java.io.IOException;
 
 public class NewLogin {
 
@@ -16,31 +9,23 @@ public class NewLogin {
     private LoginManager loginManager;
     private LoginListener loginListener;
     private LoginTask loginTask;
-
-    private Location spawnLocation;
-    private Location saidaLocation;
-
-    private File configFile;
-    private FileConfiguration config;
+    private LoginConfig cfg;
 
     public NewLogin(NewCore plugin) {
         this.plugin = plugin;
     }
 
     public void init() {
-        loadConfig();
+        cfg = new LoginConfig(plugin);
 
         loginManager = new LoginManager(plugin);
         loginManager.init();
 
         loginListener = new LoginListener(plugin, this);
-        PluginManager pm = Bukkit.getPluginManager();
-        pm.registerEvents(loginListener, plugin);
+        plugin.getServer().getPluginManager().registerEvents(loginListener, plugin);
 
         loginTask = new LoginTask(plugin, this);
         loginTask.start();
-
-        reloadSpawnAndSaida();
 
         plugin.getLogger().info("[NewLogin] módulo de login carregado.");
     }
@@ -50,63 +35,14 @@ public class NewLogin {
         if (loginTask != null) loginTask.stop();
     }
 
-    private void loadConfig() {
-        configFile = new File(plugin.getDataFolder(), "ConfigLogin.yml");
-        if (!configFile.exists()) plugin.saveResource("ConfigLogin.yml", false);
-        config = YamlConfiguration.loadConfiguration(configFile);
-    }
+    // ===== Delegações de spawn/saída para o Config =====
+    public void setSpawn(Location loc) { cfg.setSpawn(loc); }
+    public void setSaida(Location loc) { cfg.setSaida(loc); }
+    public Location getSpawn() { return cfg.getSpawn(); }
+    public Location getSaida() { return cfg.getSaida(); }
 
-    public FileConfiguration getConfig() { return config; }
-
-    public void saveConfig() {
-        try { config.save(configFile); }
-        catch (IOException e) { e.printStackTrace(); }
-    }
-
-    public int getMinDigits() { return config.getInt("senha.min", 4); }
-    public int getMaxDigits() { return config.getInt("senha.max", 16); }
-
-    public int getTimeoutSeconds() { return config.getInt("timeout.tempo_segundos", 60); }
-    public String getTimeoutMessage() { return config.getString("timeout.mensagem", "§cVocê foi kickado por inatividade ao logar!"); }
-
-    public void setSpawn(Location loc) {
-        config.set("spawn", serialize(loc));
-        saveConfig();
-        reloadSpawnAndSaida();
-    }
-
-    public void setSaida(Location loc) {
-        config.set("saida", serialize(loc));
-        saveConfig();
-        reloadSpawnAndSaida();
-    }
-
-    public Location getSpawn() { return spawnLocation; }
-    public Location getSaida() { return saidaLocation; }
-
-    public void reloadSpawnAndSaida() {
-        spawnLocation = deserialize(config.getString("spawn"));
-        saidaLocation = deserialize(config.getString("saida"));
-    }
-
-    private String serialize(Location loc) {
-        if (loc == null) return null;
-        return loc.getWorld().getName() + "," + loc.getX() + "," + loc.getY() + "," + loc.getZ() + "," + loc.getYaw() + "," + loc.getPitch();
-    }
-
-    private Location deserialize(String s) {
-        if (s == null) return null;
-        try {
-            String[] p = s.split(",");
-            return new Location(Bukkit.getWorld(p[0]),
-                    Double.parseDouble(p[1]),
-                    Double.parseDouble(p[2]),
-                    Double.parseDouble(p[3]),
-                    Float.parseFloat(p[4]),
-                    Float.parseFloat(p[5]));
-        } catch (Exception e) { return null; }
-    }
-
+    // ===== Getters =====
     public LoginManager getLoginManager() { return loginManager; }
     public LoginTask getLoginTask() { return loginTask; }
+    public LoginConfig getConfig() { return cfg; }
 }
