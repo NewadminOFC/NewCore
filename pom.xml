@@ -11,7 +11,7 @@
     <packaging>jar</packaging>
 
     <name>NewCore</name>
-    <description>coracao dos plugins</description>
+    <description>Novo coracao dos plugins</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
