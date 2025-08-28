@@ -20,18 +20,11 @@ import java.sql.*;
 import java.util.*;
 import java.util.logging.Level;
 
-/**
- * NewGroups módulo (1.7.10)
- * - Usa YAML: plugins/NewCore/NewGroups.yml
- * - Usa SQLite: plugins/NewCore/newgroups.db
- * - Comando: /newgroups (reload|setgroup|whois|importyaml|exportyaml|editor)
- * - Permissão admin: newgroups.admin
- */
 public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
 
     private static final String YAML_NAME = "NewGroups.yml";
     private static final String NG_API_BASE = "http://192.168.15.200:25580";
-    private static final String NG_API_TOKEN = "coloque_um_token_opcional";
+    private static final String NG_API_TOKEN = "";
 
     private final JavaPlugin plugin;
 
@@ -42,6 +35,8 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     private YamlConfiguration groupsConfig;
 
     private Connection conn;
+
+    private volatile String serverId;
 
     private static final class Group {
         final String name;
@@ -83,7 +78,10 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             Bukkit.getPluginManager().registerEvents(this, plugin);
             applyAllOnline();
 
-            plugin.getLogger().info("[NewGroups] módulo iniciado. Grupos: " + listGroupNames());
+            serverId = "srv-" + Bukkit.getPort();
+            startBridgeTasks();
+
+            plugin.getLogger().info("[NewGroups] iniciado. Grupos: " + listGroupNames());
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "Falha ao iniciar módulo NewGroups", e);
         }
@@ -97,19 +95,16 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         groups.clear();
         attachments.clear();
         try { if (conn != null && !conn.isClosed()) conn.close(); } catch (SQLException ignored) {}
-        plugin.getLogger().info("[NewGroups] módulo finalizado.");
+        plugin.getLogger().info("[NewGroups] finalizado.");
     }
 
     private void setupYamlFile() {
         if (!plugin.getDataFolder().exists()) plugin.getDataFolder().mkdirs();
-
         groupsFile = new File(plugin.getDataFolder(), YAML_NAME);
-
         if (!groupsFile.exists()) {
             try {
                 groupsFile.createNewFile();
                 YamlConfiguration y = new YamlConfiguration();
-
                 y.set("groups.default.default", true);
                 y.set("groups.default.prefix", "&7");
                 y.set("groups.default.parents", Collections.emptyList());
@@ -117,21 +112,16 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                         "bukkit.command.help",
                         "bukkit.command.list"
                 ));
-
                 y.set("groups.admin.default", false);
                 y.set("groups.admin.prefix", "&c[Admin] ");
                 y.set("groups.admin.parents", Collections.singletonList("default"));
                 y.set("groups.admin.permissions", Collections.singletonList("*"));
-
                 y.createSection("players");
-
                 y.save(groupsFile);
-                plugin.getLogger().info("[NewGroups] Criado " + groupsFile.getAbsolutePath());
             } catch (IOException e) {
                 plugin.getLogger().log(Level.SEVERE, "Não foi possível criar " + groupsFile.getName(), e);
             }
         }
-
         groupsConfig = new YamlConfiguration();
         try {
             groupsConfig.load(groupsFile);
@@ -139,9 +129,8 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                 groupsConfig.createSection("players");
                 saveYaml();
             }
-            plugin.getLogger().info("[NewGroups] Carregado YAML: " + groupsFile.getAbsolutePath());
         } catch (IOException | InvalidConfigurationException e) {
-            plugin.getLogger().log(Level.SEVERE, "Falha ao carregar " + groupsFile.getName() + " (verifique sintaxe YAML)", e);
+            plugin.getLogger().log(Level.SEVERE, "Falha ao carregar " + groupsFile.getName(), e);
             groupsConfig = new YamlConfiguration();
             groupsConfig.createSection("groups");
             groupsConfig.createSection("players");
@@ -156,7 +145,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     private void loadGroupsFromYamlToMemory() {
         groups.clear();
         if (!groupsConfig.isConfigurationSection("groups")) return;
-
         Set<String> keys = groupsConfig.getConfigurationSection("groups").getKeys(false);
         for (String key : keys) {
             String base = "groups." + key + ".";
@@ -166,7 +154,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             List<String> perms = groupsConfig.getStringList(base + "permissions");
             groups.put(key.toLowerCase(Locale.ENGLISH), new Group(key, def, prefix, perms, parents));
         }
-
         if (!hasAnyDefault()) {
             if (groups.containsKey("default")) {
                 Group g = groups.get("default");
@@ -233,28 +220,11 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     private void ensureSchema() throws SQLException {
         Statement st = conn.createStatement();
         try {
-            st.executeUpdate("CREATE TABLE IF NOT EXISTS groups (" +
-                    "name TEXT PRIMARY KEY," +
-                    "is_default INTEGER NOT NULL," +
-                    "prefix TEXT NOT NULL" +
-                    ")");
-            st.executeUpdate("CREATE TABLE IF NOT EXISTS group_permissions (" +
-                    "group_name TEXT NOT NULL," +
-                    "permission TEXT NOT NULL," +
-                    "PRIMARY KEY (group_name, permission)" +
-                    ")");
-            st.executeUpdate("CREATE TABLE IF NOT EXISTS group_parents (" +
-                    "group_name TEXT NOT NULL," +
-                    "parent_name TEXT NOT NULL," +
-                    "PRIMARY KEY (group_name, parent_name)" +
-                    ")");
-            st.executeUpdate("CREATE TABLE IF NOT EXISTS players (" +
-                    "uuid TEXT PRIMARY KEY," +
-                    "group_name TEXT NOT NULL" +
-                    ")");
-        } finally {
-            try { st.close(); } catch (SQLException ignored) {}
-        }
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS groups (name TEXT PRIMARY KEY,is_default INTEGER NOT NULL,prefix TEXT NOT NULL)");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS group_permissions (group_name TEXT NOT NULL,permission TEXT NOT NULL,PRIMARY KEY (group_name, permission))");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS group_parents (group_name TEXT NOT NULL,parent_name TEXT NOT NULL,PRIMARY KEY (group_name, parent_name))");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS players (uuid TEXT PRIMARY KEY,group_name TEXT NOT NULL)");
+        } finally { try { st.close(); } catch (SQLException ignored) {} }
         conn.commit();
     }
 
@@ -262,15 +232,13 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         Statement st = conn.createStatement();
         try {
             ResultSet rs = st.executeQuery("SELECT COUNT(*) AS c FROM groups");
-            try {
-                return rs.next() && rs.getInt("c") == 0;
-            } finally { try { rs.close(); } catch (SQLException ignored) {} }
+            try { return rs.next() && rs.getInt("c") == 0; }
+            finally { try { rs.close(); } catch (SQLException ignored) {} }
         } finally { try { st.close(); } catch (SQLException ignored) {} }
     }
 
     private void loadGroupsFromDatabaseToMemory() throws SQLException {
         groups.clear();
-
         Statement st1 = conn.createStatement();
         ResultSet rs1 = null;
         try {
@@ -281,11 +249,7 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                 String prefix = rs1.getString("prefix");
                 groups.put(name.toLowerCase(Locale.ENGLISH), new Group(name, def, prefix, Collections.<String>emptyList(), Collections.<String>emptyList()));
             }
-        } finally {
-            if (rs1 != null) try { rs1.close(); } catch (SQLException ignored) {}
-            try { st1.close(); } catch (SQLException ignored) {}
-        }
-
+        } finally { if (rs1 != null) try { rs1.close(); } catch (SQLException ignored) {} try { st1.close(); } catch (SQLException ignored) {} }
         Statement st2 = conn.createStatement();
         ResultSet rs2 = null;
         try {
@@ -296,11 +260,7 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                 Group grp = groups.get(g);
                 if (grp != null) grp.permissions.add(perm);
             }
-        } finally {
-            if (rs2 != null) try { rs2.close(); } catch (SQLException ignored) {}
-            try { st2.close(); } catch (SQLException ignored) {}
-        }
-
+        } finally { if (rs2 != null) try { rs2.close(); } catch (SQLException ignored) {} try { st2.close(); } catch (SQLException ignored) {} }
         Statement st3 = conn.createStatement();
         ResultSet rs3 = null;
         try {
@@ -311,11 +271,7 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                 Group grp = groups.get(g);
                 if (grp != null) grp.parents.add(parent);
             }
-        } finally {
-            if (rs3 != null) try { rs3.close(); } catch (SQLException ignored) {}
-            try { st3.close(); } catch (SQLException ignored) {}
-        }
-
+        } finally { if (rs3 != null) try { rs3.close(); } catch (SQLException ignored) {} try { st3.close(); } catch (SQLException ignored) {} }
         if (!hasAnyDefault()) {
             if (groups.containsKey("default")) {
                 Group g = groups.get("default");
@@ -336,13 +292,11 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                 st.executeUpdate("DELETE FROM groups");
             } finally { try { st.close(); } catch (SQLException ignored) {} }
         }
-
         PreparedStatement upGroup = conn.prepareStatement("INSERT OR REPLACE INTO groups(name,is_default,prefix) VALUES(?,?,?)");
         PreparedStatement delPerms = conn.prepareStatement("DELETE FROM group_permissions WHERE group_name=?");
         PreparedStatement addPerm = conn.prepareStatement("INSERT OR REPLACE INTO group_permissions(group_name,permission) VALUES(?,?)");
         PreparedStatement delParents = conn.prepareStatement("DELETE FROM group_parents WHERE group_name=?");
         PreparedStatement addParent = conn.prepareStatement("INSERT OR REPLACE INTO group_parents(group_name,parent_name) VALUES(?,?)");
-
         try {
             for (Group g : groups.values()) {
                 upGroup.setString(1, g.name);
@@ -351,14 +305,12 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                 upGroup.addBatch();
             }
             upGroup.executeBatch();
-
             for (Group g : groups.values()) {
                 delPerms.setString(1, g.name); delPerms.addBatch();
                 delParents.setString(1, g.name); delParents.addBatch();
             }
             delPerms.executeBatch();
             delParents.executeBatch();
-
             for (Group g : groups.values()) {
                 for (String p : g.permissions) {
                     addPerm.setString(1, g.name);
@@ -373,7 +325,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             }
             addPerm.executeBatch();
             addParent.executeBatch();
-
             conn.commit();
         } finally {
             try { upGroup.close(); } catch (SQLException ignored) {}
@@ -412,9 +363,7 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             conn.commit();
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Erro salvando jogador no SQLite", e);
-        } finally {
-            if (ps != null) try { ps.close(); } catch (SQLException ignored) {}
-        }
+        } finally { if (ps != null) try { ps.close(); } catch (SQLException ignored) {} }
         groupsConfig.set("players." + uuid + ".group", group);
         saveYaml();
     }
@@ -422,10 +371,8 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     private String resolvePlayerGroup(UUID uuid) {
         String g = getPlayerGroupFromDB(uuid);
         if (g != null && groups.containsKey(g.toLowerCase(Locale.ENGLISH))) return g.toLowerCase(Locale.ENGLISH);
-
         String yp = groupsConfig.getString("players." + uuid + ".group", null);
         if (yp != null && groups.containsKey(yp.toLowerCase(Locale.ENGLISH))) return yp.toLowerCase(Locale.ENGLISH);
-
         for (Group gg : groups.values()) if (gg.isDefault) return gg.name;
         return "default";
     }
@@ -435,14 +382,12 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         if (!groups.containsKey(gname)) return Collections.<String>emptySet();
         if (visited.contains(gname)) return Collections.<String>emptySet();
         visited.add(gname);
-
         Group g = groups.get(gname);
         if (g.permissions.contains("*")) {
             LinkedHashSet<String> star = new LinkedHashSet<String>();
             star.add("*");
             return star;
         }
-
         LinkedHashSet<String> perms = new LinkedHashSet<String>(g.permissions);
         for (int i = 0; i < g.parents.size(); i++) {
             String parent = g.parents.get(i);
@@ -472,14 +417,11 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     private void applyToPlayer(UUID uuid) {
         Player p = Bukkit.getPlayer(uuid);
         if (p == null) return;
-
         clearAttachment(uuid);
         PermissionAttachment at = p.addAttachment(plugin);
         attachments.put(uuid, at);
-
         String groupName = resolvePlayerGroup(uuid);
         Set<String> perms = resolvePermissions(groupName, new HashSet<String>());
-
         if (perms.contains("*")) {
             at.setPermission("*", true);
         } else {
@@ -495,42 +437,33 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
 
     private void applyAllOnline() {
         Player[] arr = Bukkit.getServer().getOnlinePlayers().toArray(new Player[0]);
-        for (int i = 0; i < arr.length; i++) {
-            applyToPlayer(arr[i].getUniqueId());
-        }
+        for (int i = 0; i < arr.length; i++) applyToPlayer(arr[i].getUniqueId());
     }
 
     @EventHandler public void onJoin(PlayerJoinEvent e) { applyToPlayer(e.getPlayer().getUniqueId()); }
 
     public boolean onCommand(final CommandSender sender, Command command, String label, String[] args) {
         if (!"newgroups".equalsIgnoreCase(command.getName()) && !"newgroup".equalsIgnoreCase(command.getName())) return false;
-
         if (args.length == 0) { sendHelp(sender, label); return true; }
-
         String sub = args[0].toLowerCase(Locale.ENGLISH);
-
         if ("editor".equals(sub)) {
             if (!(sender instanceof Player)) { sender.sendMessage(color("&cApenas no jogo.")); return true; }
             final Player p = (Player) sender;
-            final String serverId = "srv-" + Bukkit.getPort();
+            final String sid = serverId != null ? serverId : ("srv-" + Bukkit.getPort());
             Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
                 public void run() {
-                    String url = createEditorSession(serverId);
+                    ensureRegistered(sid);
+                    String url = createEditorSession(sid);
                     if (url == null) {
-                        Bukkit.getScheduler().runTask(plugin, new Runnable() {
-                            public void run() { p.sendMessage(color("&cFalha ao criar sessão.")); }
-                        });
+                        Bukkit.getScheduler().runTask(plugin, new Runnable() { public void run() { p.sendMessage(color("&cFalha ao criar sessão.")); }});
                     } else {
                         final String msg = color("&aLink do editor: &f" + url);
-                        Bukkit.getScheduler().runTask(plugin, new Runnable() {
-                            public void run() { p.sendMessage(msg); }
-                        });
+                        Bukkit.getScheduler().runTask(plugin, new Runnable() { public void run() { p.sendMessage(msg); }});
                     }
                 }
             });
             return true;
         }
-
         if ("reload".equals(sub)) {
             if (!hasAdmin(sender)) { deny(sender); return true; }
             try {
@@ -609,7 +542,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             }
             return true;
         }
-
         sendHelp(sender, label);
         return true;
     }
@@ -617,7 +549,6 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> out = new ArrayList<String>();
         if (!"newgroups".equalsIgnoreCase(command.getName()) && !"newgroup".equalsIgnoreCase(command.getName())) return out;
-
         if (args.length == 1) {
             out.add("editor");
             out.add("reload");
@@ -668,7 +599,33 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
 
     private static String color(String s) { return s.replace('&', '§'); }
 
-    private String createEditorSession(String serverId) {
+    private void startBridgeTasks() {
+        final String sid = serverId != null ? serverId : ("srv-" + Bukkit.getPort());
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() { public void run() { ensureRegistered(sid); pushSnapshot(sid); }});
+        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, new Runnable() {
+            public void run() {
+                try { ensureRegistered(sid); pullAndApply(sid); }
+                catch (Throwable t) { plugin.getLogger().log(Level.WARNING, "[NewGroups] pull falhou", t); }
+            }
+        }, 20L * 10L, 20L * 5L);
+        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, new Runnable() {
+            public void run() {
+                try { ensureRegistered(sid); pushSnapshot(sid); }
+                catch (Throwable t) { plugin.getLogger().log(Level.WARNING, "[NewGroups] push falhou", t); }
+            }
+        }, 20L * 30L, 20L * 60L);
+    }
+
+    private void ensureRegistered(String sid) {
+        try {
+            String body = "{\"serverId\":\"" + escapeJson(sid) + "\",\"name\":\"" + escapeJson(Bukkit.getServerName()) + "\"}";
+            httpPostJson("/api/v1/servers/register", body);
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.FINE, "[NewGroups] registro: " + t);
+        }
+    }
+
+    private String createEditorSession(String sid) {
         HttpURLConnection conn = null;
         try {
             URL url = new URL(NG_API_BASE + "/api/v1/editor/sessions");
@@ -678,15 +635,12 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             conn.setReadTimeout(12000);
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            if (NG_API_TOKEN != null && NG_API_TOKEN.length() > 0) {
-                conn.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
-            }
-            String body = "{\"serverId\":\"" + escapeJson(serverId) + "\"}";
+            if (NG_API_TOKEN != null && NG_API_TOKEN.length() > 0) conn.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
+            String body = "{\"serverId\":\"" + escapeJson(sid) + "\"}";
             OutputStream os = conn.getOutputStream();
             os.write(body.getBytes("UTF-8"));
             os.flush();
             os.close();
-
             int code = conn.getResponseCode();
             InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
             String resp = readAll(is);
@@ -700,9 +654,255 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         } catch (Throwable t) {
             plugin.getLogger().log(Level.WARNING, "[NewGroups] Falha chamando API de sessão", t);
             return null;
-        } finally {
-            if (conn != null) conn.disconnect();
+        } finally { if (conn != null) conn.disconnect(); }
+    }
+
+    private void pushSnapshot(String sid) {
+        try {
+            Map<String, Object> snap = dumpSnapshot();
+            String body = "{\"serverId\":\"" + escapeJson(sid) + "\",\"groups\":" + (String) snap.get("groupsJson") + ",\"users\":" + (String) snap.get("usersJson") + "}";
+            httpPostJson("/bridge/push", body);
+        } catch (Throwable t) { plugin.getLogger().log(Level.FINE, "[NewGroups] bridge/push falhou: " + t.getMessage()); }
+    }
+
+    private void pullAndApply(String sid) {
+        String resp = httpGet("/bridge/pull?serverId=" + urlEncode(sid));
+        if (resp == null || resp.length() == 0) return;
+        if (resp.contains("\"empty\":true")) return;
+        List<PGroup> newGroups = parseEditorGroups(resp);
+        if (newGroups == null) return;
+        try {
+            applyPulledGroups(newGroups);
+            loadGroupsFromDatabaseToMemory();
+            writeMemoryToYaml(true);
+            applyAllOnline();
+            plugin.getLogger().info("[NewGroups] Aplicadas mudanças do editor (" + newGroups.size() + " grupos).");
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "[NewGroups] Falha aplicando payload do editor", e);
         }
+    }
+
+    private Map<String, Object> dumpSnapshot() throws SQLException {
+        StringBuilder gsb = new StringBuilder();
+        gsb.append("[");
+        boolean first = true;
+        Statement st = conn.createStatement();
+        ResultSet rs = st.executeQuery("SELECT name,is_default,prefix FROM groups");
+        try {
+            while (rs.next()) {
+                if (!first) gsb.append(",");
+                first = false;
+                String name = rs.getString(1);
+                boolean isDef = rs.getInt(2) == 1;
+                String prefix = rs.getString(3);
+                List<String> parents = new ArrayList<String>();
+                PreparedStatement psPar = conn.prepareStatement("SELECT parent_name FROM group_parents WHERE group_name=?");
+                psPar.setString(1, name);
+                ResultSet rPar = psPar.executeQuery();
+                while (rPar.next()) parents.add(rPar.getString(1));
+                rPar.close(); psPar.close();
+                List<String> perms = new ArrayList<String>();
+                PreparedStatement psPerm = conn.prepareStatement("SELECT permission FROM group_permissions WHERE group_name=?");
+                psPerm.setString(1, name);
+                ResultSet rPerm = psPerm.executeQuery();
+                while (rPerm.next()) perms.add(rPerm.getString(1));
+                rPerm.close(); psPerm.close();
+                gsb.append("{");
+                gsb.append("\"id\":\"").append(escapeJson(name)).append("\",");
+                gsb.append("\"name\":\"").append(escapeJson(name)).append("\",");
+                gsb.append("\"weight\":").append(isDef ? "1" : "10").append(",");
+                gsb.append("\"inherits\":[");
+                for (int i = 0; i < parents.size(); i++) { if (i>0) gsb.append(","); gsb.append("\"").append(escapeJson(parents.get(i))).append("\""); }
+                gsb.append("],");
+                gsb.append("\"prefix\":\"").append(escapeJson(prefix)).append("\",");
+                gsb.append("\"permissions\":[");
+                for (int i = 0; i < perms.size(); i++) {
+                    if (i>0) gsb.append(",");
+                    String node = perms.get(i);
+                    boolean val = !node.startsWith("-");
+                    String pure = val ? node : node.substring(1);
+                    gsb.append("{\"node\":\"").append(escapeJson(pure)).append("\",\"value\":").append(val ? "true" : "false").append("}");
+                }
+                gsb.append("]}");
+            }
+        } finally { try { rs.close(); } catch (SQLException ignored) {} try { st.close(); } catch (SQLException ignored) {} }
+        gsb.append("]");
+        StringBuilder usb = new StringBuilder();
+        usb.append("[");
+        boolean uf = true;
+        Statement su = conn.createStatement();
+        ResultSet ru = su.executeQuery("SELECT uuid,group_name FROM players");
+        try {
+            while (ru.next()) {
+                if (!uf) usb.append(",");
+                uf = false;
+                usb.append("{\"uuid\":\"").append(escapeJson(ru.getString(1))).append("\",\"group\":\"").append(escapeJson(ru.getString(2))).append("\"}");
+            }
+        } finally { try { ru.close(); } catch (SQLException ignored) {} try { su.close(); } catch (SQLException ignored) {} }
+        usb.append("]");
+        Map<String, Object> out = new HashMap<String, Object>();
+        out.put("groupsJson", gsb.toString());
+        out.put("usersJson", usb.toString());
+        return out;
+    }
+
+    private static final class PGroup {
+        String name;
+        int weight;
+        List<String> inherits = new ArrayList<String>();
+        List<PNode> permissions = new ArrayList<PNode>();
+        String prefix = "";
+        boolean isDefault = false;
+    }
+    private static final class PNode { String node; boolean value; }
+
+    private List<PGroup> parseEditorGroups(String json) {
+        int gi = json.indexOf("\"groups\"");
+        if (gi < 0) return null;
+        int si = json.indexOf('[', gi);
+        if (si < 0) return null;
+        int depth = 0; int end = -1;
+        for (int i = si; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '[') depth++;
+            else if (c == ']') { depth--; if (depth == 0) { end = i; break; } }
+        }
+        if (end < 0) return null;
+        String arr = json.substring(si, end + 1);
+        List<PGroup> list = new ArrayList<PGroup>();
+        int idx = 0;
+        while (true) {
+            int objStart = arr.indexOf('{', idx);
+            if (objStart < 0) break;
+            int d = 0; int objEnd = -1; boolean inStr = false;
+            for (int i = objStart; i < arr.length(); i++) {
+                char c = arr.charAt(i);
+                if (c == '"' && arr.charAt(i - 1) != '\\') inStr = !inStr;
+                if (!inStr) {
+                    if (c == '{') d++;
+                    else if (c == '}') { d--; if (d == 0) { objEnd = i; break; } }
+                }
+            }
+            if (objEnd < 0) break;
+            String obj = arr.substring(objStart, objEnd + 1);
+            PGroup g = new PGroup();
+            String nm = extractJsonString(obj, "name");
+            if (nm == null) nm = extractJsonString(obj, "id");
+            g.name = nm != null ? nm.toLowerCase(Locale.ENGLISH) : null;
+            String pref = extractJsonString(obj, "prefix");
+            if (pref != null) g.prefix = pref;
+            String weightStr = extractJsonNumber(obj, "weight");
+            try { if (weightStr != null) g.weight = Integer.parseInt(weightStr); } catch (Throwable ignored) {}
+            if (containsKey(obj, "inherits")) {
+                List<String> inh = extractStringArray(obj, "inherits");
+                if (inh != null) g.inherits.addAll(inh);
+            }
+            if (containsKey(obj, "permissions")) {
+                List<String[]> nodes = extractPermArray(obj, "permissions");
+                for (int i = 0; i < nodes.size(); i++) {
+                    String[] e = nodes.get(i);
+                    PNode pn = new PNode();
+                    pn.node = e[0];
+                    pn.value = "true".equalsIgnoreCase(e[1]);
+                    g.permissions.add(pn);
+                }
+            }
+            g.isDefault = g.weight <= 1;
+            if (g.name != null) list.add(g);
+            idx = objEnd + 1;
+        }
+        return list;
+    }
+
+    private void applyPulledGroups(List<PGroup> newGroups) throws SQLException {
+        Statement st = conn.createStatement();
+        try {
+            st.executeUpdate("DELETE FROM group_permissions");
+            st.executeUpdate("DELETE FROM group_parents");
+            st.executeUpdate("DELETE FROM groups");
+        } finally { try { st.close(); } catch (SQLException ignored) {} }
+        PreparedStatement upG = conn.prepareStatement("INSERT OR REPLACE INTO groups(name,is_default,prefix) VALUES(?,?,?)");
+        PreparedStatement upP = conn.prepareStatement("INSERT OR REPLACE INTO group_permissions(group_name,permission) VALUES(?,?)");
+        PreparedStatement upPar = conn.prepareStatement("INSERT OR REPLACE INTO group_parents(group_name,parent_name) VALUES(?,?)");
+        try {
+            for (int i = 0; i < newGroups.size(); i++) {
+                PGroup g = newGroups.get(i);
+                upG.setString(1, g.name);
+                upG.setInt(2, g.isDefault ? 1 : 0);
+                upG.setString(3, g.prefix == null ? "" : g.prefix);
+                upG.addBatch();
+            }
+            upG.executeBatch();
+            for (int i = 0; i < newGroups.size(); i++) {
+                PGroup g = newGroups.get(i);
+                for (int j = 0; j < g.inherits.size(); j++) {
+                    upPar.setString(1, g.name);
+                    upPar.setString(2, g.inherits.get(j));
+                    upPar.addBatch();
+                }
+                for (int j = 0; j < g.permissions.size(); j++) {
+                    PNode n = g.permissions.get(j);
+                    String node = n.value ? n.node : ("-" + n.node);
+                    upP.setString(1, g.name);
+                    upP.setString(2, node);
+                    upP.addBatch();
+                }
+            }
+            upPar.executeBatch();
+            upP.executeBatch();
+            conn.commit();
+        } finally {
+            try { upG.close(); } catch (SQLException ignored) {}
+            try { upP.close(); } catch (SQLException ignored) {}
+            try { upPar.close(); } catch (SQLException ignored) {}
+        }
+    }
+
+    private String httpPostJson(String path, String body) {
+        HttpURLConnection c = null;
+        try {
+            URL url = new URL(NG_API_BASE + path);
+            c = (HttpURLConnection) url.openConnection();
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(15000);
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            if (NG_API_TOKEN != null && NG_API_TOKEN.length() > 0) c.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
+            OutputStream os = c.getOutputStream();
+            os.write(body.getBytes("UTF-8"));
+            os.flush(); os.close();
+            int code = c.getResponseCode();
+            InputStream is = (code >= 200 && code < 300) ? c.getInputStream() : c.getErrorStream();
+            String resp = readAll(is);
+            if (code >= 200 && code < 300) return resp;
+            plugin.getLogger().warning("[NewGroups] POST " + path + " -> " + code + ": " + resp);
+            return null;
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.FINE, "[NewGroups] POST falhou " + path, t);
+            return null;
+        } finally { if (c != null) c.disconnect(); }
+    }
+
+    private String httpGet(String path) {
+        HttpURLConnection c = null;
+        try {
+            URL url = new URL(NG_API_BASE + path);
+            c = (HttpURLConnection) url.openConnection();
+            c.setRequestMethod("GET");
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(15000);
+            if (NG_API_TOKEN != null && NG_API_TOKEN.length() > 0) c.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
+            int code = c.getResponseCode();
+            InputStream is = (code >= 200 && code < 300) ? c.getInputStream() : c.getErrorStream();
+            String resp = readAll(is);
+            if (code >= 200 && code < 300) return resp;
+            plugin.getLogger().warning("[NewGroups] GET " + path + " -> " + code + ": " + resp);
+            return null;
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.FINE, "[NewGroups] GET falhou " + path, t);
+            return null;
+        } finally { if (c != null) c.disconnect(); }
     }
 
     private static String readAll(InputStream is) throws IOException {
@@ -730,6 +930,103 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         return json.substring(q1 + 1, q2);
     }
 
+    private static String extractJsonNumber(String json, String field) {
+        if (json == null) return null;
+        String key = "\"" + field + "\"";
+        int i = json.indexOf(key);
+        if (i < 0) return null;
+        int c = json.indexOf(':', i + key.length());
+        if (c < 0) return null;
+        int s = c + 1;
+        while (s < json.length() && Character.isWhitespace(json.charAt(s))) s++;
+        int e = s;
+        while (e < json.length() && "-0123456789".indexOf(json.charAt(e)) >= 0) e++;
+        if (e > s) return json.substring(s, e);
+        return null;
+    }
+
+    private static boolean containsKey(String json, String field) {
+        return json != null && json.indexOf("\"" + field + "\"") >= 0;
+    }
+
+    private static List<String> extractStringArray(String json, String field) {
+        List<String> out = new ArrayList<String>();
+        String key = "\"" + field + "\"";
+        int i = json.indexOf(key);
+        if (i < 0) return out;
+        int a = json.indexOf('[', i);
+        if (a < 0) return out;
+        int d = 0; int end = -1;
+        boolean inStr = false;
+        for (int k = a; k < json.length(); k++) {
+            char c = json.charAt(k);
+            if (c == '"' && json.charAt(Math.max(0, k - 1)) != '\\') inStr = !inStr;
+            if (!inStr) {
+                if (c == '[') d++;
+                else if (c == ']') { d--; if (d == 0) { end = k; break; } }
+            }
+        }
+        if (end < 0) return out;
+        String arr = json.substring(a, end + 1);
+        int idx = 0;
+        while (true) {
+            int q1 = arr.indexOf('"', idx);
+            if (q1 < 0) break;
+            int q2 = arr.indexOf('"', q1 + 1);
+            if (q2 < 0) break;
+            out.add(unescapeJson(arr.substring(q1 + 1, q2)));
+            idx = q2 + 1;
+        }
+        return out;
+    }
+
+    private static List<String[]> extractPermArray(String json, String field) {
+        List<String[]> out = new ArrayList<String[]>();
+        String key = "\"" + field + "\"";
+        int i = json.indexOf(key);
+        if (i < 0) return out;
+        int a = json.indexOf('[', i);
+        if (a < 0) return out;
+        int d = 0; int end = -1;
+        boolean inStr = false;
+        for (int k = a; k < json.length(); k++) {
+            char c = json.charAt(k);
+            if (c == '"' && json.charAt(Math.max(0, k - 1)) != '\\') inStr = !inStr;
+            if (!inStr) {
+                if (c == '[') d++;
+                else if (c == ']') { d--; if (d == 0) { end = k; break; } }
+            }
+        }
+        if (end < 0) return out;
+        String arr = json.substring(a, end + 1);
+        int idx = 0;
+        while (true) {
+            int o = arr.indexOf('{', idx);
+            if (o < 0) break;
+            int depth = 0; int oe = -1; boolean str = false;
+            for (int k = o; k < arr.length(); k++) {
+                char c = arr.charAt(k);
+                if (c == '"' && arr.charAt(Math.max(0, k - 1)) != '\\') str = !str;
+                if (!str) {
+                    if (c == '{') depth++;
+                    else if (c == '}') { depth--; if (depth == 0) { oe = k; break; } }
+                }
+            }
+            if (oe < 0) break;
+            String obj = arr.substring(o, oe + 1);
+            String node = extractJsonString(obj, "node");
+            String val = "true".equalsIgnoreCase(extractJsonString(obj, "value")) ? "true" : (obj.contains("\"value\":true") ? "true" : "false");
+            out.add(new String[]{ node == null ? "" : node, val });
+            idx = oe + 1;
+        }
+        return out;
+    }
+
+    private static String unescapeJson(String s) {
+        if (s == null) return null;
+        return s.replace("\\\"", "\"").replace("\\\\", "\\").replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t");
+    }
+
     private static String escapeJson(String s) {
         if (s == null) return "";
         StringBuilder sb = new StringBuilder();
@@ -742,5 +1039,9 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             else sb.append(ch);
         }
         return sb.toString();
+    }
+
+    private static String urlEncode(String s) {
+        try { return java.net.URLEncoder.encode(s, "UTF-8"); } catch (Exception e) { return s; }
     }
 }

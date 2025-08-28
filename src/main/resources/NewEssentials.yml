@@ -1,8 +1,9 @@
 # ==========================
 # Configuração do NewEssentials
-# (EnderChest + Spawn/SetSpawn + TPA + Rename/Lore)
+# (EnderChest + Spawn/SetSpawn + TPA + Rename/Lore + ItemEdit)
 # ==========================
 
+# ===== EnderChest =====
 enderchest:
   enabled: true
   require-permission: true
@@ -19,6 +20,7 @@ enderchest:
     blocked-world: "&cVocê não pode usar /ec neste mundo."
     opened: "&aEnder Chest aberto."
 
+# ===== Spawn / SetSpawn =====
 spawn:
   enabled:
     spawn: true
@@ -47,6 +49,7 @@ spawn:
     cancelled: "&cTeleporte cancelado por movimento."
     sql-fail: "&cFalha ao acessar banco de dados. Veja o console."
 
+# ===== TPA =====
 tpa:
   enabled: true
   require-permission:
@@ -86,6 +89,7 @@ tpa:
     denied-target: "&eVocê recusou o pedido de &f%from%&e."
     tp-done: "&aTeleporte concluído."
 
+# ===== Rename =====
 rename:
   enabled: true
   prefix: "&3&lNew&bEssentials &7» "
@@ -98,6 +102,7 @@ rename:
     renamed: "&aNome definido para: &f%name%"
     usage: "&eUso: /rename <novo nome>"
 
+# ===== AddLore =====
 addlore:
   enabled: true
   messages:
@@ -106,6 +111,7 @@ addlore:
     added: "&aLore adicionada com sucesso!"
     no-item: "&cVocê precisa segurar um item."
 
+# ===== RemoveLore =====
 removelore:
   enabled: true
   messages:
