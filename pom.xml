@@ -33,12 +33,13 @@
     </repositories>
 
     <dependencies>
-        <!-- Spigot API - não embutir -->
+        <!-- Mohist 1.7.10 como JAR local (substitui a spigot-api 1.8.8) -->
         <dependency>
-            <groupId>org.spigotmc</groupId>
-            <artifactId>spigot-api</artifactId>
-            <version>${spigot.api.version}</version>
-            <scope>provided</scope>
+            <groupId>spigot</groupId>
+            <artifactId>spigot-server</artifactId>
+            <version>1.7.10</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/lib/spigot-1.7.10.jar</systemPath>
         </dependency>
 
         <!-- SQLite JDBC - embutir -->

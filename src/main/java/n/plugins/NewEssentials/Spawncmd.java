@@ -1,4 +1,4 @@
-// File: src/main/java/n/plugins/NewEssentials/spawncmd.java
+// File: src/main/java/n/plugins/NewEssentials/Spawncmd.java
 package n.plugins.NewEssentials;
 
 import org.bukkit.Bukkit;
@@ -14,7 +14,6 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
-import java.io.IOException;
 import java.sql.*;
 import java.util.*;
 
@@ -25,22 +24,22 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
     // ===== SQLite =====
     private Connection conn;
 
-    // ===== Config =====
+    // ===== Config (somente LEITURA do YML do resources) =====
     private File cfgFile;
     private org.bukkit.configuration.file.YamlConfiguration cfg;
 
-    // toggles
+    // toggles (valores padrão só como fallback; não gravamos no arquivo)
     private boolean ENABLED_SPAWN = true;
     private boolean ENABLED_SETSPAWN = true;
     private boolean REQUIRE_PERM_SPAWN = true;
     private boolean REQUIRE_PERM_SETSPAWN = true;
     private boolean PLAY_SOUND = true;
-    private String SOUND_NAME = "LEVEL_UP"; // 1.7.10
-    private int COOLDOWN_SECONDS = 0;       // /spawn
-    private int WARMUP_SECONDS = 0;         // /spawn
-    private boolean CANCEL_ON_MOVE = true;  // /spawn
-    private boolean FIRST_JOIN_TP = false;  // teleporta no primeiro login
-    private final Set<String> BLOCKED_WORLDS = new HashSet<String>(); // nomes exatos
+    private String SOUND_NAME = "LEVEL_UP";
+    private int COOLDOWN_SECONDS = 0;
+    private int WARMUP_SECONDS = 0;
+    private boolean CANCEL_ON_MOVE = true;
+    private boolean FIRST_JOIN_TP = false;
+    private final Set<String> BLOCKED_WORLDS = new HashSet<String>();
 
     // messages
     private String MSG_ONLY_PLAYER   = "&cApenas jogadores podem usar esse comando.";
@@ -56,14 +55,14 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
     private String MSG_CANCELLED     = "&cTeleporte cancelado por movimento.";
     private String MSG_SQL_FAIL      = "&cFalha ao acessar banco de dados. Veja o console.";
 
-    // ===== Estado (cooldown e warmup) =====
+    // ===== Estado =====
     private final Map<UUID, Long> lastSpawnUse = new HashMap<UUID, Long>();
     private final Map<UUID, Integer> warmupTask = new HashMap<UUID, Integer>();
     private final Map<UUID, Location> warmupStartLoc = new HashMap<UUID, Location>();
 
     public Spawncmd(JavaPlugin core){
         this.core = core;
-        loadConfig();
+        loadConfig();     // lê somente do YML
         initDb();
         Bukkit.getPluginManager().registerEvents(this, core);
     }
@@ -82,11 +81,10 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
             if (!(sender instanceof Player)) { sender.sendMessage(color(MSG_ONLY_PLAYER)); return true; }
             Player p = (Player) sender;
             if (REQUIRE_PERM_SETSPAWN && !p.hasPermission("new.setspawn")) { p.sendMessage(color(MSG_NO_PERM_SET)); return true; }
-
             if (isBlockedWorld(p.getWorld().getName())) { p.sendMessage(color(MSG_BLOCKED_WORLD)); return true; }
 
             Location loc = p.getLocation();
-            boolean ok = saveSpawn(loc);
+            boolean ok = saveSpawn(loc); // salva no SQLite (não grava no YML)
             if (ok) {
                 p.sendMessage(color(MSG_SPAWN_SET));
                 if (PLAY_SOUND) playSoundSafe(p, SOUND_NAME, 1f, 1.2f);
@@ -101,13 +99,11 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
             if (!(sender instanceof Player)) { sender.sendMessage(color(MSG_ONLY_PLAYER)); return true; }
             final Player p = (Player) sender;
             if (REQUIRE_PERM_SPAWN && !p.hasPermission("new.spawn")) { p.sendMessage(color(MSG_NO_PERM_SPAWN)); return true; }
-
             if (isBlockedWorld(p.getWorld().getName())) { p.sendMessage(color(MSG_BLOCKED_WORLD)); return true; }
 
             final Location spawn = getSpawn();
             if (spawn == null) { p.sendMessage(color(MSG_SPAWN_NOT_SET)); return true; }
 
-            // cooldown
             if (COOLDOWN_SECONDS > 0) {
                 Long last = lastSpawnUse.get(p.getUniqueId());
                 long now = System.currentTimeMillis();
@@ -119,11 +115,9 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
                 }
             }
 
-            // warmup
             if (WARMUP_SECONDS > 0) {
                 startWarmup(p, spawn);
             } else {
-                // teleporta direto
                 doTeleport(p, spawn);
                 if (COOLDOWN_SECONDS > 0) lastSpawnUse.put(p.getUniqueId(), System.currentTimeMillis());
             }
@@ -135,17 +129,14 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
 
     // ===== Warmup =====
     private void startWarmup(final Player p, final Location target){
-        // cancela warmup antigo
         cancelWarmup(p.getUniqueId());
 
         final int[] secondsLeft = new int[]{ WARMUP_SECONDS };
         warmupStartLoc.put(p.getUniqueId(), p.getLocation().clone());
-
         p.sendMessage(color(MSG_WARMUP.replace("%sec%", String.valueOf(secondsLeft[0]))));
 
         int taskId = Bukkit.getScheduler().scheduleSyncRepeatingTask(core, new Runnable(){
             @Override public void run(){
-                // checa cancelamento por movimento
                 if (CANCEL_ON_MOVE && moved(p, warmupStartLoc.get(p.getUniqueId()))){
                     p.sendMessage(color(MSG_CANCELLED));
                     cancelWarmup(p.getUniqueId());
@@ -154,7 +145,7 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
 
                 secondsLeft[0]--;
                 if (secondsLeft[0] <= 0){
-                    cancelWarmup(p.getUniqueId()); // encerra tarefa
+                    cancelWarmup(p.getUniqueId());
                     doTeleport(p, target);
                     if (COOLDOWN_SECONDS > 0) lastSpawnUse.put(p.getUniqueId(), System.currentTimeMillis());
                 } else {
@@ -173,9 +164,7 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
     }
 
     private void cancelAllWarmups(){
-        for (Integer id : new ArrayList<Integer>(warmupTask.values())){
-            Bukkit.getScheduler().cancelTask(id);
-        }
+        for (Integer id : new ArrayList<Integer>(warmupTask.values())) Bukkit.getScheduler().cancelTask(id);
         warmupTask.clear();
         warmupStartLoc.clear();
     }
@@ -183,7 +172,6 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
     private boolean moved(Player p, Location start){
         if (start == null) return false;
         Location now = p.getLocation();
-        // cancela se mudou X/Z/Y inteiro (sensível)
         return now.getBlockX() != start.getBlockX()
                 || now.getBlockY() != start.getBlockY()
                 || now.getBlockZ() != start.getBlockZ();
@@ -195,14 +183,8 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
         if (PLAY_SOUND) playSoundSafe(p, SOUND_NAME, 1f, 1.0f);
     }
 
-    // ===== Listeners =====
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onMove(PlayerMoveEvent e){
-        if (!CANCEL_ON_MOVE) return;
-        if (!warmupTask.containsKey(e.getPlayer().getUniqueId())) return;
-        // checagem fina já é feita no tick; aqui, se quiser, poderíamos cancelar imediatamente.
-        // Mantemos lógica no tick para simplicidade/compat 1.7
-    }
+    public void onMove(PlayerMoveEvent e){ /* lógica no tick */ }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent e){
@@ -210,15 +192,11 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
         Player p = e.getPlayer();
         if (!p.hasPlayedBefore()){
             Location s = getSpawn();
-            if (s != null) {
-                Bukkit.getScheduler().runTaskLater(core, new Runnable(){
-                    @Override public void run(){ if (p.isOnline()) p.teleport(s); }
-                }, 1L);
-            }
+            if (s != null) Bukkit.getScheduler().runTaskLater(core, new Runnable(){ @Override public void run(){ if (p.isOnline()) p.teleport(s); } }, 1L);
         }
+        // nada é gravado no YML aqui
     }
 
-    // ===== Tab =====
     @Override
     public List<String> onTabComplete(CommandSender sender, Command cmd, String alias, String[] args) {
         return java.util.Collections.emptyList();
@@ -244,9 +222,7 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
                         "yaw REAL NOT NULL," +
                         "pitch REAL NOT NULL," +
                         "updated_at INTEGER NOT NULL)");
-            } finally {
-                if(st!=null) try{ st.close(); } catch(Exception ignored){}
-            }
+            } finally { if(st!=null) try{ st.close(); } catch(Exception ignored){} }
             core.getLogger().info("[NewEssentials] SQLite OK (spawn)");
         }catch (Throwable t){
             core.getLogger().severe("[NewEssentials] ERRO SQLite (spawn): " + t.getMessage());
@@ -285,9 +261,7 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
         }catch (SQLException e){
             core.getLogger().severe("[NewEssentials] Falha ao salvar spawn: " + e.getMessage());
             return false;
-        } finally {
-            if(ps!=null) try{ ps.close(); }catch(Exception ignored){}
-        }
+        } finally { if(ps!=null) try{ ps.close(); }catch(Exception ignored){} }
     }
 
     private Location getSpawn(){
@@ -320,86 +294,48 @@ public final class Spawncmd implements CommandExecutor, TabCompleter, Listener {
         }
     }
 
-    // ===== Config =====
+    // ===== Config (SOMENTE leitura do YML) =====
     private void loadConfig(){
         if (!core.getDataFolder().exists()) core.getDataFolder().mkdirs();
         cfgFile = new File(core.getDataFolder(), "NewEssentials.yml");
         if (!cfgFile.exists()){
-            try { cfgFile.createNewFile(); } catch (IOException ignored) {}
+            try { core.saveResource("NewEssentials.yml", false); } catch (IllegalArgumentException ignored) {}
         }
         cfg = org.bukkit.configuration.file.YamlConfiguration.loadConfiguration(cfgFile);
 
-        // defaults
-        setDef("spawn.enabled.spawn", ENABLED_SPAWN);
-        setDef("spawn.enabled.setspawn", ENABLED_SETSPAWN);
-        setDef("spawn.require-permission.spawn", REQUIRE_PERM_SPAWN);
-        setDef("spawn.require-permission.setspawn", REQUIRE_PERM_SETSPAWN);
-        setDef("spawn.cooldown-seconds", COOLDOWN_SECONDS);
-        setDef("spawn.warmup-seconds", WARMUP_SECONDS);
-        setDef("spawn.cancel-on-move", CANCEL_ON_MOVE);
-        setDef("spawn.first-join-teleport", FIRST_JOIN_TP);
-        setDef("spawn.play-sound", PLAY_SOUND);
-        setDef("spawn.sound", SOUND_NAME);
-        setDef("spawn.blocked-worlds", new ArrayList<String>());
-
-        setDef("spawn.messages.only-player", MSG_ONLY_PLAYER);
-        setDef("spawn.messages.no-perm-set", MSG_NO_PERM_SET);
-        setDef("spawn.messages.no-perm-spawn", MSG_NO_PERM_SPAWN);
-        setDef("spawn.messages.disabled", MSG_DISABLED);
-        setDef("spawn.messages.blocked-world", MSG_BLOCKED_WORLD);
-        setDef("spawn.messages.spawn-set", MSG_SPAWN_SET);
-        setDef("spawn.messages.spawn-tp", MSG_SPAWN_TP);
-        setDef("spawn.messages.spawn-not-set", MSG_SPAWN_NOT_SET);
-        setDef("spawn.messages.cooldown", MSG_COOLDOWN);
-        setDef("spawn.messages.warmup", MSG_WARMUP);
-        setDef("spawn.messages.cancelled", MSG_CANCELLED);
-        setDef("spawn.messages.sql-fail", MSG_SQL_FAIL);
-
-        saveCfg();
-
-        // read
-        ENABLED_SPAWN = cfg.getBoolean("spawn.enabled.spawn", ENABLED_SPAWN);
-        ENABLED_SETSPAWN = cfg.getBoolean("spawn.enabled.setspawn", ENABLED_SETSPAWN);
-        REQUIRE_PERM_SPAWN = cfg.getBoolean("spawn.require-permission.spawn", REQUIRE_PERM_SPAWN);
+        ENABLED_SPAWN       = cfg.getBoolean("spawn.enabled.spawn", ENABLED_SPAWN);
+        ENABLED_SETSPAWN    = cfg.getBoolean("spawn.enabled.setspawn", ENABLED_SETSPAWN);
+        REQUIRE_PERM_SPAWN  = cfg.getBoolean("spawn.require-permission.spawn", REQUIRE_PERM_SPAWN);
         REQUIRE_PERM_SETSPAWN = cfg.getBoolean("spawn.require-permission.setspawn", REQUIRE_PERM_SETSPAWN);
-        COOLDOWN_SECONDS = cfg.getInt("spawn.cooldown-seconds", COOLDOWN_SECONDS);
-        WARMUP_SECONDS = cfg.getInt("spawn.warmup-seconds", WARMUP_SECONDS);
-        CANCEL_ON_MOVE = cfg.getBoolean("spawn.cancel-on-move", CANCEL_ON_MOVE);
-        FIRST_JOIN_TP = cfg.getBoolean("spawn.first-join-teleport", FIRST_JOIN_TP);
-        PLAY_SOUND = cfg.getBoolean("spawn.play-sound", PLAY_SOUND);
-        SOUND_NAME = cfg.getString("spawn.sound", SOUND_NAME);
+        COOLDOWN_SECONDS    = cfg.getInt("spawn.cooldown-seconds", COOLDOWN_SECONDS);
+        WARMUP_SECONDS      = cfg.getInt("spawn.warmup-seconds", WARMUP_SECONDS);
+        CANCEL_ON_MOVE      = cfg.getBoolean("spawn.cancel-on-move", CANCEL_ON_MOVE);
+        FIRST_JOIN_TP       = cfg.getBoolean("spawn.first-join-teleport", FIRST_JOIN_TP);
+        PLAY_SOUND          = cfg.getBoolean("spawn.play-sound", PLAY_SOUND);
+        SOUND_NAME          = cfg.getString("spawn.sound", SOUND_NAME);
 
         BLOCKED_WORLDS.clear();
-        List<String> worlds = cfg.getStringList("spawn.blocked-worlds");
+        java.util.List<String> worlds = cfg.getStringList("spawn.blocked-worlds");
         if (worlds != null) for (String w : worlds) if (w != null) BLOCKED_WORLDS.add(w);
 
-        MSG_ONLY_PLAYER   = cfg.getString("spawn.messages.only-player", MSG_ONLY_PLAYER);
-        MSG_NO_PERM_SET   = cfg.getString("spawn.messages.no-perm-set", MSG_NO_PERM_SET);
+        MSG_ONLY_PLAYER   = cfg.getString("spawn.messages.only-player",   MSG_ONLY_PLAYER);
+        MSG_NO_PERM_SET   = cfg.getString("spawn.messages.no-perm-set",   MSG_NO_PERM_SET);
         MSG_NO_PERM_SPAWN = cfg.getString("spawn.messages.no-perm-spawn", MSG_NO_PERM_SPAWN);
-        MSG_DISABLED      = cfg.getString("spawn.messages.disabled", MSG_DISABLED);
+        MSG_DISABLED      = cfg.getString("spawn.messages.disabled",      MSG_DISABLED);
         MSG_BLOCKED_WORLD = cfg.getString("spawn.messages.blocked-world", MSG_BLOCKED_WORLD);
-        MSG_SPAWN_SET     = cfg.getString("spawn.messages.spawn-set", MSG_SPAWN_SET);
-        MSG_SPAWN_TP      = cfg.getString("spawn.messages.spawn-tp", MSG_SPAWN_TP);
+        MSG_SPAWN_SET     = cfg.getString("spawn.messages.spawn-set",     MSG_SPAWN_SET);
+        MSG_SPAWN_TP      = cfg.getString("spawn.messages.spawn-tp",      MSG_SPAWN_TP);
         MSG_SPAWN_NOT_SET = cfg.getString("spawn.messages.spawn-not-set", MSG_SPAWN_NOT_SET);
-        MSG_COOLDOWN      = cfg.getString("spawn.messages.cooldown", MSG_COOLDOWN);
-        MSG_WARMUP        = cfg.getString("spawn.messages.warmup", MSG_WARMUP);
-        MSG_CANCELLED     = cfg.getString("spawn.messages.cancelled", MSG_CANCELLED);
-        MSG_SQL_FAIL      = cfg.getString("spawn.messages.sql-fail", MSG_SQL_FAIL);
+        MSG_COOLDOWN      = cfg.getString("spawn.messages.cooldown",      MSG_COOLDOWN);
+        MSG_WARMUP        = cfg.getString("spawn.messages.warmup",        MSG_WARMUP);
+        MSG_CANCELLED     = cfg.getString("spawn.messages.cancelled",     MSG_CANCELLED);
+        MSG_SQL_FAIL      = cfg.getString("spawn.messages.sql-fail",      MSG_SQL_FAIL);
     }
-
-    private void setDef(String path, Object val){
-        if (!cfg.contains(path)) cfg.set(path, val);
-    }
-    private void saveCfg(){ try { cfg.save(cfgFile); } catch (IOException ignored) {} }
 
     private boolean isBlockedWorld(String w){ return BLOCKED_WORLDS.contains(w); }
 
-    // ===== Utils =====
     private static String color(String s){ return ChatColor.translateAlternateColorCodes('&', s); }
     private void playSoundSafe(Player p, String name, float vol, float pit){
-        try{
-            Sound s = Sound.valueOf(name.toUpperCase());
-            p.playSound(p.getLocation(), s, vol, pit);
-        }catch(Throwable ignore){}
+        try{ Sound s = Sound.valueOf(name.toUpperCase()); p.playSound(p.getLocation(), s, vol, pit); }catch(Throwable ignore){}
     }
 }

@@ -8,12 +8,14 @@ public final class NewCore extends JavaPlugin {
 
     private NewCommandManager commandManager;
 
+
     @Override
     public void onEnable() {
         mostrartitle();
         commandManager = new NewCommandManager(this);
         commandManager.registerAll();
         getLogger().info("[NewCore] módulos carregados com sucesso.");
+        try { saveResource("NewEssentials.yml", false); } catch (Throwable ignore) {}
     }
 
     @Override

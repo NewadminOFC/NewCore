@@ -18,18 +18,13 @@ public class enderchest implements CommandExecutor {
 
     private NewCore plugin;
 
-    // config dedicada
     private File cfgFile;
     private YamlConfiguration cfg;
 
     private final Map<UUID, Long> cooldown = new HashMap<UUID, Long>();
 
-    public enderchest() {
-        // será injetado em onBind; mas para manter compat. com teu manager atual,
-        // vamos tentar obter a instância estática se existir.
-    }
+    public enderchest() {}
 
-    // chamado pelo teu CommandManager ao dar bind
     public void onBind(NewCore plugin) {
         if (this.plugin == null) {
             this.plugin = plugin;
@@ -41,13 +36,13 @@ public class enderchest implements CommandExecutor {
         try {
             if (!plugin.getDataFolder().exists()) plugin.getDataFolder().mkdirs();
             cfgFile = new File(plugin.getDataFolder(), "NewEssentials.yml");
-            if (!cfgFile.exists()) {
+            if (!cfgFile.exists()) { // copia o COMPLETO do resources
                 try { plugin.saveResource("NewEssentials.yml", false); } catch (IllegalArgumentException ignored) {}
             }
             cfg = new YamlConfiguration();
             cfg.load(cfgFile);
         } catch (IOException | InvalidConfigurationException e) {
-            cfg = new YamlConfiguration(); // vazio -> usa defaults
+            cfg = new YamlConfiguration();
         }
     }
 
@@ -63,9 +58,7 @@ public class enderchest implements CommandExecutor {
             sender.sendMessage(c("enderchest.messages.only-player","&cComando apenas in-game."));
             return true;
         }
-        // garantir init
         if (plugin == null) {
-            // tentar resolver pelo comando
             plugin = (NewCore) Bukkit.getPluginManager().getPlugin("NewCore");
             loadConfig();
         }
@@ -81,14 +74,12 @@ public class enderchest implements CommandExecutor {
             return true;
         }
 
-        // bloco de mundos
         List<String> blocked = cfg.getStringList("enderchest.blocked-worlds");
         if (blocked != null && blocked.contains(p.getWorld().getName())) {
             p.sendMessage(c("enderchest.messages.blocked-world","&cVocê não pode usar /ec neste mundo."));
             return true;
         }
 
-        // cooldown
         int cd = i("enderchest.cooldown-seconds", 5);
         if (cd > 0) {
             long now = System.currentTimeMillis();
@@ -104,9 +95,7 @@ public class enderchest implements CommandExecutor {
             cooldown.put(p.getUniqueId(), now);
         }
 
-        // abrir EC
         p.openInventory(p.getEnderChest());
-
         if (b("enderchest.play-sound", true)) {
             try {
                 String s = cfg.getString("enderchest.sound", "CHEST_OPEN");

@@ -33,7 +33,7 @@ spawn:
   cancel-on-move: true
   first-join-teleport: false
   play-sound: true
-  sound: "LEVEL_UP"
+  sound: "LEVEL_UP"   # 1.7.10
   blocked-worlds: []
   messages:
     only-player: "&cApenas jogadores podem usar esse comando."
@@ -121,7 +121,7 @@ removelore:
     no-lore: "&cEste item não possui lore."
     removed: "&aLore removida! Restam &f%lines% &alinha(s)."
 
-# ===== ItemEdit =====
+# ===== ItemEdit (1.7.10 sem NBT) =====
 itemedit:
   enabled: true
   require-permission: true
@@ -133,13 +133,7 @@ itemedit:
 
   # Limites e regras
   max-damage-add: 20.0         # limite de bônus (valor absoluto) permitido sem bypass
-  use-nbt-attributes: true     # tenta usar AttributeModifiers por NBT (1.7.10/1.8.x)
-  fallback-to-sharpness: true  # se NBT falhar, usa Sharpness (~1.25 dano/nível no 1.7)
-
-  # UUID fixo do modificador (permite replace limpo do nosso bônus)
-  damage-modifier-uuid-most: 123456789
-  damage-modifier-uuid-least: 987654321
-  damage-modifier-name: "NewEssentials-Damage"
+  show-visible-lore: false     # se true, adiciona "+X Dano de Ataque" no lore visível
 
   # Permissões
   permissions:
@@ -165,7 +159,6 @@ itemedit:
     damage-set: "&aBônus de dano definido em &f%amount%&a."
     damage-added: "&aBônus de dano aumentado em &f%amount%&a. Agora: &f%total%&a."
     damage-cleared: "&aBônus de dano removido."
-    damage-fallback: "&eNão foi possível aplicar por NBT; usando Sharpness para simular dano (&f+%amount%&e)."
     info-header: "&7--- &bItem Info&7 ---"
     info-damage: "&7Bônus de dano (atributo): &f%amount%"
     info-sharpness: "&7Sharpness: &f%lvl%"

@@ -1,3 +1,4 @@
+// File: src/main/java/n/plugins/warps/NewWarps.java
 package n.plugins.warps;
 
 import org.bukkit.Bukkit;
@@ -139,7 +140,7 @@ public class NewWarps implements Listener, CommandExecutor, TabCompleter {
                 float pitch = (float) cfg.getDouble(base + ".pitch");
                 p.teleport(new Location(w, x, y, z, yaw, pitch));
 
-                // título e msg
+                // título e msg (compat 1.7.10 → cai para chat decorado)
                 String mensagemWarp = cfg.getString(base + ".mensagem", "&a" + warp);
                 boolean mostrarTitulo      = cfg.getBoolean("geral.message-title", true);
                 boolean mostrarCoordTitulo = cfg.getBoolean("geral.message-title-coord", false);
@@ -218,38 +219,73 @@ public class NewWarps implements Listener, CommandExecutor, TabCompleter {
         return sb.toString();
     }
 
-    // compat 1.8+
+    /**
+     * Compat 1.7.10:
+     * - Tenta usar sendTitle (1.8+). Se não houver, tenta PacketPlayOutTitle por reflexão (1.8).
+     * - Em 1.7.10 não existe título → cai para mensagens de chat decoradas.
+     */
     public void enviarTitulo(Player p, String titulo, String subtitulo, int fadeIn, int stay, int fadeOut) {
+        // 1) 1.8+ API direta
         try {
-            p.sendTitle(titulo, subtitulo);
-        } catch (NoSuchMethodError e) {
+            p.getClass().getMethod("sendTitle", String.class, String.class).invoke(p, titulo, subtitulo);
+            return;
+        } catch (Throwable ignored) {}
+
+        // 2) 1.8 NMS por reflexão (se existir)
+        try {
+            String ver = core.getServer().getClass().getPackage().getName().split("\\.")[3];
+
+            // Se a classe não existir, é 1.7.10 → cairá no catch
+            Class<?> packetTitle = Class.forName("net.minecraft.server." + ver + ".PacketPlayOutTitle");
+            Class<?> enumTitleAction;
             try {
-                String version = core.getServer().getClass().getPackage().getName().split("\\.")[3];
-                Object handle = p.getClass().getMethod("getHandle").invoke(p);
-                Object connection = handle.getClass().getField("playerConnection").get(handle);
+                enumTitleAction = Class.forName("net.minecraft.server." + ver + ".PacketPlayOutTitle$EnumTitleAction");
+            } catch (ClassNotFoundException e) {
+                enumTitleAction = packetTitle.getDeclaredClasses()[0];
+            }
 
-                Class<?> packetTitle = Class.forName("net.minecraft.server." + version + ".PacketPlayOutTitle");
-                Class<?> enumTitleAction = packetTitle.getDeclaredClasses()[0];
-                Object titleEnum = enumTitleAction.getEnumConstants()[0]; // TITLE
-                Object subtitleEnum = enumTitleAction.getEnumConstants()[1]; // SUBTITLE
+            Class<?> ichat = Class.forName("net.minecraft.server." + ver + ".IChatBaseComponent");
+            Class<?> chatSerializer;
+            try {
+                chatSerializer = Class.forName("net.minecraft.server." + ver + ".ChatSerializer");
+            } catch (ClassNotFoundException e) {
+                chatSerializer = ichat.getDeclaredClasses()[0]; // IChatBaseComponent$ChatSerializer
+            }
 
-                Class<?> chatComponent = Class.forName("net.minecraft.server." + version + ".IChatBaseComponent");
-                Class<?> chatSerializer = chatComponent.getDeclaredClasses()[0];
+            Object compTitle = chatSerializer.getMethod("a", String.class)
+                    .invoke(null, "{\"text\":\"" + escapeJson(titulo) + "\"}");
+            Object compSub = chatSerializer.getMethod("a", String.class)
+                    .invoke(null, "{\"text\":\"" + escapeJson(subtitulo) + "\"}");
 
-                Object titleComponent = chatSerializer.getMethod("a", String.class)
-                        .invoke(null, "{\"text\":\"" + titulo.replace("§", "\\u00A7") + "\"}");
-                Object subtitleComponent = chatSerializer.getMethod("a", String.class)
-                        .invoke(null, "{\"text\":\"" + subtitulo.replace("§", "\\u00A7") + "\"}");
+            Object TITLE = enumTitleAction.getField("TITLE").get(null);
+            Object SUBTITLE = enumTitleAction.getField("SUBTITLE").get(null);
 
-                Object titlePacket = packetTitle.getConstructor(enumTitleAction, chatComponent, int.class, int.class, int.class)
-                        .newInstance(titleEnum, titleComponent, fadeIn, stay, fadeOut);
-                Object subtitlePacket = packetTitle.getConstructor(enumTitleAction, chatComponent, int.class, int.class, int.class)
-                        .newInstance(subtitleEnum, subtitleComponent, fadeIn, stay, fadeOut);
+            Object packet1 = packetTitle
+                    .getConstructor(enumTitleAction, ichat, int.class, int.class, int.class)
+                    .newInstance(TITLE, compTitle, fadeIn, stay, fadeOut);
+            Object packet2 = packetTitle
+                    .getConstructor(enumTitleAction, ichat, int.class, int.class, int.class)
+                    .newInstance(SUBTITLE, compSub, fadeIn, stay, fadeOut);
 
-                Class<?> packet = Class.forName("net.minecraft.server." + version + ".Packet");
-                connection.getClass().getMethod("sendPacket", packet).invoke(connection, titlePacket);
-                connection.getClass().getMethod("sendPacket", packet).invoke(connection, subtitlePacket);
-            } catch (Exception ignored) {}
-        }
+            Object handle = p.getClass().getMethod("getHandle").invoke(p);
+            Object connection = handle.getClass().getField("playerConnection").get(handle);
+            Class<?> packet = Class.forName("net.minecraft.server." + ver + ".Packet");
+            connection.getClass().getMethod("sendPacket", packet).invoke(connection, packet1);
+            connection.getClass().getMethod("sendPacket", packet).invoke(connection, packet2);
+            return;
+        } catch (Throwable ignored) {}
+
+        // 3) Fallback 1.7.10: chat
+        if (titulo == null) titulo = "";
+        if (subtitulo == null) subtitulo = "";
+        p.sendMessage("§8§m----------------------------");
+        if (!titulo.isEmpty()) p.sendMessage(titulo);
+        if (!subtitulo.isEmpty()) p.sendMessage(subtitulo);
+        p.sendMessage("§8§m----------------------------");
+    }
+
+    private String escapeJson(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("§", "\\u00A7");
     }
 }
