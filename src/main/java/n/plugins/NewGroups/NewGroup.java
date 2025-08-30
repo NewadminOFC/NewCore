@@ -23,13 +23,14 @@ import java.util.logging.Level;
 public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
 
     private static final String YAML_NAME = "NewGroups.yml";
-    private static final String NG_API_BASE = "http://192.168.15.200:25580";
+    private static final String NG_API_BASE = "https://perms.newplugins.shop";
     private static final String NG_API_TOKEN = "";
 
     private final JavaPlugin plugin;
 
-    private final Map<String, Group> groups = new LinkedHashMap<String, Group>();
-    private final Map<UUID, PermissionAttachment> attachments = new HashMap<UUID, PermissionAttachment>();
+    private final Map<String, Group> groups = new LinkedHashMap<>();
+    private final Map<UUID, PermissionAttachment> attachments = new HashMap<>();
+    private final Map<UUID, Integer> editorTasks = new HashMap<>();
 
     private File groupsFile;
     private YamlConfiguration groupsConfig;
@@ -49,8 +50,8 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             this.name = name == null ? "default" : name.toLowerCase(Locale.ENGLISH);
             this.isDefault = isDefault;
             this.prefix = prefix == null ? "" : prefix;
-            this.permissions = new LinkedHashSet<String>(permissions == null ? Collections.<String>emptyList() : permissions);
-            this.parents = new ArrayList<String>(parents == null ? Collections.<String>emptyList() : parents);
+            this.permissions = new LinkedHashSet<>(permissions == null ? Collections.emptyList() : permissions);
+            this.parents = new ArrayList<>(parents == null ? Collections.emptyList() : parents);
         }
     }
 
@@ -88,12 +89,13 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     }
 
     public void shutdown() {
-        Player[] online = Bukkit.getServer().getOnlinePlayers().toArray(new Player[0]);
-        for (int i = 0; i < online.length; i++) {
-            clearAttachment(online[i].getUniqueId());
+        Bukkit.getScheduler().cancelTasks(plugin);
+        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            clearAttachment(onlinePlayer.getUniqueId());
         }
         groups.clear();
         attachments.clear();
+        editorTasks.clear();
         try { if (conn != null && !conn.isClosed()) conn.close(); } catch (SQLException ignored) {}
         plugin.getLogger().info("[NewGroups] finalizado.");
     }
@@ -108,10 +110,7 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                 y.set("groups.default.default", true);
                 y.set("groups.default.prefix", "&7");
                 y.set("groups.default.parents", Collections.emptyList());
-                y.set("groups.default.permissions", Arrays.asList(
-                        "bukkit.command.help",
-                        "bukkit.command.list"
-                ));
+                y.set("groups.default.permissions", Arrays.asList("bukkit.command.help", "bukkit.command.list"));
                 y.set("groups.admin.default", false);
                 y.set("groups.admin.prefix", "&c[Admin] ");
                 y.set("groups.admin.parents", Collections.singletonList("default"));
@@ -138,8 +137,13 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     }
 
     private boolean saveYaml() {
-        try { groupsConfig.save(groupsFile); return true; }
-        catch (IOException e) { plugin.getLogger().log(Level.SEVERE, "Erro salvando " + groupsFile.getName(), e); return false; }
+        try {
+            groupsConfig.save(groupsFile);
+            return true;
+        } catch (IOException e) {
+            plugin.getLogger().log(Level.SEVERE, "Erro salvando " + groupsFile.getName(), e);
+            return false;
+        }
     }
 
     private void loadGroupsFromYamlToMemory() {
@@ -171,10 +175,18 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             String path = "groups." + g.name + ".";
             groupsConfig.set(path + "default", g.isDefault);
             groupsConfig.set(path + "prefix", g.prefix);
-            groupsConfig.set(path + "parents", new ArrayList<String>(g.parents));
-            groupsConfig.set(path + "permissions", new ArrayList<String>(g.permissions));
+            groupsConfig.set(path + "parents", new ArrayList<>(g.parents));
+            groupsConfig.set(path + "permissions", new ArrayList<>(g.permissions));
         }
-        if (!groupsConfig.isConfigurationSection("players")) groupsConfig.createSection("players");
+        groupsConfig.createSection("players");
+        try (Statement st = conn.createStatement();
+             ResultSet rs = st.executeQuery("SELECT uuid, group_name FROM players")) {
+            while (rs.next()) {
+                groupsConfig.set("players." + rs.getString("uuid") + ".group", rs.getString("group_name"));
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Não foi possível escrever jogadores para YAML", e);
+        }
         saveYaml();
     }
 
@@ -184,134 +196,92 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     }
 
     private void seedDefaultInMemory() {
-        Group def = new Group("default", true, "&7",
-                Arrays.asList("bukkit.command.help", "bukkit.command.list"), Collections.<String>emptyList());
-        Group admin = new Group("admin", false, "&c[Admin] ",
-                Arrays.asList("*"), Arrays.asList("default"));
+        Group def = new Group("default", true, "&7", Arrays.asList("bukkit.command.help", "bukkit.command.list"), Collections.emptyList());
+        Group admin = new Group("admin", false, "&c[Admin] ", Collections.singletonList("*"), Collections.singletonList("default"));
         groups.clear();
         groups.put(def.name, def);
         groups.put(admin.name, admin);
     }
 
     private String listGroupNames() {
-        StringBuilder sb = new StringBuilder();
-        boolean first = true;
-        for (String k : groups.keySet()) {
-            if (!first) sb.append(", ");
-            sb.append(k);
-            first = false;
-        }
-        return sb.toString();
+        return String.join(", ", groups.keySet());
     }
 
     private void setupSQLite() throws SQLException {
-        try { Class.forName("org.sqlite.JDBC"); }
-        catch (ClassNotFoundException e) {
-            plugin.getLogger().warning("Driver SQLite não encontrado. Inclua org.xerial:sqlite-jdbc no seu plugin (shade).");
+        try {
+            Class.forName("org.sqlite.JDBC");
+        } catch (ClassNotFoundException e) {
+            plugin.getLogger().warning("Driver SQLite não encontrado.");
         }
         File dbFile = new File(plugin.getDataFolder(), "newgroups.db");
         String url = "jdbc:sqlite:" + dbFile.getAbsolutePath();
         conn = DriverManager.getConnection(url);
-        Statement st = conn.createStatement();
-        try { st.execute("PRAGMA foreign_keys=ON"); } finally { try { st.close(); } catch (SQLException ignored) {} }
+        try (Statement st = conn.createStatement()) {
+            st.execute("PRAGMA foreign_keys=ON");
+        }
         conn.setAutoCommit(false);
     }
 
     private void ensureSchema() throws SQLException {
-        Statement st = conn.createStatement();
-        try {
-            st.executeUpdate("CREATE TABLE IF NOT EXISTS groups (name TEXT PRIMARY KEY,is_default INTEGER NOT NULL,prefix TEXT NOT NULL)");
-            st.executeUpdate("CREATE TABLE IF NOT EXISTS group_permissions (group_name TEXT NOT NULL,permission TEXT NOT NULL,PRIMARY KEY (group_name, permission))");
-            st.executeUpdate("CREATE TABLE IF NOT EXISTS group_parents (group_name TEXT NOT NULL,parent_name TEXT NOT NULL,PRIMARY KEY (group_name, parent_name))");
-            st.executeUpdate("CREATE TABLE IF NOT EXISTS players (uuid TEXT PRIMARY KEY,group_name TEXT NOT NULL)");
-        } finally { try { st.close(); } catch (SQLException ignored) {} }
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS groups (name TEXT PRIMARY KEY, is_default INTEGER NOT NULL, prefix TEXT NOT NULL)");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS group_permissions (group_name TEXT NOT NULL, permission TEXT NOT NULL, PRIMARY KEY (group_name, permission))");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS group_parents (group_name TEXT NOT NULL, parent_name TEXT NOT NULL, PRIMARY KEY (group_name, parent_name))");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS players (uuid TEXT PRIMARY KEY, group_name TEXT)");
+            st.executeUpdate("CREATE TABLE IF NOT EXISTS player_permissions (uuid TEXT NOT NULL, permission TEXT NOT NULL, PRIMARY KEY (uuid, permission))");
+        }
         conn.commit();
     }
 
     private boolean isDatabaseEmpty() throws SQLException {
-        Statement st = conn.createStatement();
-        try {
-            ResultSet rs = st.executeQuery("SELECT COUNT(*) AS c FROM groups");
-            try { return rs.next() && rs.getInt("c") == 0; }
-            finally { try { rs.close(); } catch (SQLException ignored) {} }
-        } finally { try { st.close(); } catch (SQLException ignored) {} }
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT COUNT(*) AS c FROM groups")) {
+            return rs.next() && rs.getInt("c") == 0;
+        }
     }
 
     private void loadGroupsFromDatabaseToMemory() throws SQLException {
         groups.clear();
-        Statement st1 = conn.createStatement();
-        ResultSet rs1 = null;
-        try {
-            rs1 = st1.executeQuery("SELECT name, is_default, prefix FROM groups");
-            while (rs1.next()) {
-                String name = rs1.getString("name");
-                boolean def = rs1.getInt("is_default") == 1;
-                String prefix = rs1.getString("prefix");
-                groups.put(name.toLowerCase(Locale.ENGLISH), new Group(name, def, prefix, Collections.<String>emptyList(), Collections.<String>emptyList()));
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT name, is_default, prefix FROM groups")) {
+            while (rs.next()) {
+                String name = rs.getString("name");
+                groups.put(name.toLowerCase(Locale.ENGLISH), new Group(name, rs.getInt("is_default") == 1, rs.getString("prefix"), new ArrayList<>(), new ArrayList<>()));
             }
-        } finally { if (rs1 != null) try { rs1.close(); } catch (SQLException ignored) {} try { st1.close(); } catch (SQLException ignored) {} }
-        Statement st2 = conn.createStatement();
-        ResultSet rs2 = null;
-        try {
-            rs2 = st2.executeQuery("SELECT group_name, permission FROM group_permissions");
-            while (rs2.next()) {
-                String g = rs2.getString("group_name").toLowerCase(Locale.ENGLISH);
-                String perm = rs2.getString("permission");
-                Group grp = groups.get(g);
-                if (grp != null) grp.permissions.add(perm);
+        }
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT group_name, permission FROM group_permissions")) {
+            while (rs.next()) {
+                Group g = groups.get(rs.getString("group_name").toLowerCase(Locale.ENGLISH));
+                if (g != null) g.permissions.add(rs.getString("permission"));
             }
-        } finally { if (rs2 != null) try { rs2.close(); } catch (SQLException ignored) {} try { st2.close(); } catch (SQLException ignored) {} }
-        Statement st3 = conn.createStatement();
-        ResultSet rs3 = null;
-        try {
-            rs3 = st3.executeQuery("SELECT group_name, parent_name FROM group_parents");
-            while (rs3.next()) {
-                String g = rs3.getString("group_name").toLowerCase(Locale.ENGLISH);
-                String parent = rs3.getString("parent_name");
-                Group grp = groups.get(g);
-                if (grp != null) grp.parents.add(parent);
+        }
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT group_name, parent_name FROM group_parents")) {
+            while (rs.next()) {
+                Group g = groups.get(rs.getString("group_name").toLowerCase(Locale.ENGLISH));
+                if (g != null) g.parents.add(rs.getString("parent_name"));
             }
-        } finally { if (rs3 != null) try { rs3.close(); } catch (SQLException ignored) {} try { st3.close(); } catch (SQLException ignored) {} }
-        if (!hasAnyDefault()) {
-            if (groups.containsKey("default")) {
-                Group g = groups.get("default");
-                groups.put("default", new Group(g.name, true, g.prefix, g.permissions, g.parents));
-            } else {
-                seedDefaultInMemory();
-                writeMemoryToDatabase(true);
-            }
+        }
+        if (!hasAnyDefault() && !groups.isEmpty()) {
+            Group g = groups.values().iterator().next();
+            groups.put(g.name, new Group(g.name, true, g.prefix, g.permissions, g.parents));
+            plugin.getLogger().warning("Nenhum grupo padrão encontrado. Marcando '" + g.name + "' como padrão.");
         }
     }
 
     private void writeMemoryToDatabase(boolean overwrite) throws SQLException {
         if (overwrite) {
-            Statement st = conn.createStatement();
-            try {
+            try (Statement st = conn.createStatement()) {
                 st.executeUpdate("DELETE FROM group_permissions");
                 st.executeUpdate("DELETE FROM group_parents");
                 st.executeUpdate("DELETE FROM groups");
-            } finally { try { st.close(); } catch (SQLException ignored) {} }
+            }
         }
-        PreparedStatement upGroup = conn.prepareStatement("INSERT OR REPLACE INTO groups(name,is_default,prefix) VALUES(?,?,?)");
-        PreparedStatement delPerms = conn.prepareStatement("DELETE FROM group_permissions WHERE group_name=?");
-        PreparedStatement addPerm = conn.prepareStatement("INSERT OR REPLACE INTO group_permissions(group_name,permission) VALUES(?,?)");
-        PreparedStatement delParents = conn.prepareStatement("DELETE FROM group_parents WHERE group_name=?");
-        PreparedStatement addParent = conn.prepareStatement("INSERT OR REPLACE INTO group_parents(group_name,parent_name) VALUES(?,?)");
-        try {
+        try (PreparedStatement upGroup = conn.prepareStatement("INSERT OR REPLACE INTO groups(name,is_default,prefix) VALUES(?,?,?)");
+             PreparedStatement addPerm = conn.prepareStatement("INSERT OR REPLACE INTO group_permissions(group_name,permission) VALUES(?,?)");
+             PreparedStatement addParent = conn.prepareStatement("INSERT OR REPLACE INTO group_parents(group_name,parent_name) VALUES(?,?)")) {
             for (Group g : groups.values()) {
                 upGroup.setString(1, g.name);
                 upGroup.setInt(2, g.isDefault ? 1 : 0);
                 upGroup.setString(3, g.prefix);
                 upGroup.addBatch();
-            }
-            upGroup.executeBatch();
-            for (Group g : groups.values()) {
-                delPerms.setString(1, g.name); delPerms.addBatch();
-                delParents.setString(1, g.name); delParents.addBatch();
-            }
-            delPerms.executeBatch();
-            delParents.executeBatch();
-            for (Group g : groups.values()) {
                 for (String p : g.permissions) {
                     addPerm.setString(1, g.name);
                     addPerm.setString(2, p);
@@ -323,81 +293,72 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
                     addParent.addBatch();
                 }
             }
+            upGroup.executeBatch();
             addPerm.executeBatch();
             addParent.executeBatch();
             conn.commit();
-        } finally {
-            try { upGroup.close(); } catch (SQLException ignored) {}
-            try { delPerms.close(); } catch (SQLException ignored) {}
-            try { addPerm.close(); } catch (SQLException ignored) {}
-            try { delParents.close(); } catch (SQLException ignored) {}
-            try { addParent.close(); } catch (SQLException ignored) {}
         }
     }
 
     private String getPlayerGroupFromDB(UUID uuid) {
         if (uuid == null) return null;
-        PreparedStatement ps = null; ResultSet rs = null;
-        try {
-            ps = conn.prepareStatement("SELECT group_name FROM players WHERE uuid=?");
+        try (PreparedStatement ps = conn.prepareStatement("SELECT group_name FROM players WHERE uuid=?")) {
             ps.setString(1, uuid.toString());
-            rs = ps.executeQuery();
-            if (rs.next()) return rs.getString("group_name");
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getString("group_name");
+            }
         } catch (SQLException e) {
             plugin.getLogger().log(Level.WARNING, "Erro lendo grupo do jogador no SQLite", e);
-        } finally {
-            if (rs != null) try { rs.close(); } catch (SQLException ignored) {}
-            if (ps != null) try { ps.close(); } catch (SQLException ignored) {}
         }
         return null;
     }
 
+    private Set<String> getPlayerPermissionsFromDB(UUID uuid) {
+        Set<String> perms = new HashSet<>();
+        if (uuid == null) return perms;
+        try (PreparedStatement ps = conn.prepareStatement("SELECT permission FROM player_permissions WHERE uuid=?")) {
+            ps.setString(1, uuid.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    perms.add(rs.getString("permission"));
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().log(Level.WARNING, "Erro lendo permissões do jogador no SQLite", e);
+        }
+        return perms;
+    }
+
     private void upsertPlayerGroup(UUID uuid, String group) {
-        if (uuid == null || group == null) return;
-        PreparedStatement ps = null;
-        try {
-            ps = conn.prepareStatement("INSERT OR REPLACE INTO players(uuid,group_name) VALUES(?,?)");
+        if (uuid == null) return;
+        try (PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO players(uuid,group_name) VALUES(?,?)")) {
             ps.setString(1, uuid.toString());
             ps.setString(2, group);
             ps.executeUpdate();
             conn.commit();
         } catch (SQLException e) {
             plugin.getLogger().log(Level.SEVERE, "Erro salvando jogador no SQLite", e);
-        } finally { if (ps != null) try { ps.close(); } catch (SQLException ignored) {} }
-        groupsConfig.set("players." + uuid + ".group", group);
+        }
+        groupsConfig.set("players." + uuid.toString() + ".group", group);
         saveYaml();
     }
 
     private String resolvePlayerGroup(UUID uuid) {
         String g = getPlayerGroupFromDB(uuid);
         if (g != null && groups.containsKey(g.toLowerCase(Locale.ENGLISH))) return g.toLowerCase(Locale.ENGLISH);
-        String yp = groupsConfig.getString("players." + uuid + ".group", null);
-        if (yp != null && groups.containsKey(yp.toLowerCase(Locale.ENGLISH))) return yp.toLowerCase(Locale.ENGLISH);
         for (Group gg : groups.values()) if (gg.isDefault) return gg.name;
         return "default";
     }
 
     private Set<String> resolvePermissions(String groupName, Set<String> visited) {
         String gname = (groupName == null ? "default" : groupName.toLowerCase(Locale.ENGLISH));
-        if (!groups.containsKey(gname)) return Collections.<String>emptySet();
-        if (visited.contains(gname)) return Collections.<String>emptySet();
+        if (!groups.containsKey(gname) || visited.contains(gname)) return Collections.emptySet();
         visited.add(gname);
         Group g = groups.get(gname);
-        if (g.permissions.contains("*")) {
-            LinkedHashSet<String> star = new LinkedHashSet<String>();
-            star.add("*");
-            return star;
-        }
-        LinkedHashSet<String> perms = new LinkedHashSet<String>(g.permissions);
-        for (int i = 0; i < g.parents.size(); i++) {
-            String parent = g.parents.get(i);
-            Set<String> parentPerms = resolvePermissions(parent, visited);
-            if (parentPerms.contains("*")) {
-                LinkedHashSet<String> star = new LinkedHashSet<String>();
-                star.add("*");
-                return star;
-            }
-            perms.addAll(parentPerms);
+        if (g.permissions.contains("*")) return new HashSet<>(Collections.singletonList("*"));
+        LinkedHashSet<String> perms = new LinkedHashSet<>(g.permissions);
+        for (String parent : g.parents) {
+            perms.addAll(resolvePermissions(parent, visited));
         }
         return perms;
     }
@@ -406,11 +367,9 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         PermissionAttachment at = attachments.remove(uuid);
         if (at != null) {
             try {
-                Map<String, Boolean> map = new HashMap<String, Boolean>(at.getPermissions());
-                for (String perm : map.keySet()) at.unsetPermission(perm);
                 Player p = Bukkit.getPlayer(uuid);
                 if (p != null) p.removeAttachment(at);
-            } catch (Throwable ignored) {}
+            } catch (Exception ignored) {}
         }
     }
 
@@ -421,153 +380,224 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         PermissionAttachment at = p.addAttachment(plugin);
         attachments.put(uuid, at);
         String groupName = resolvePlayerGroup(uuid);
-        Set<String> perms = resolvePermissions(groupName, new HashSet<String>());
-        if (perms.contains("*")) {
+        Set<String> groupPerms = resolvePermissions(groupName, new HashSet<>());
+        Set<String> playerPerms = getPlayerPermissionsFromDB(uuid);
+
+        Set<String> finalPerms = new HashSet<>(groupPerms);
+        for (String perm : playerPerms) {
+            boolean neg = perm.startsWith("-");
+            String node = neg ? perm.substring(1) : perm;
+            finalPerms.remove(node);
+            finalPerms.remove("-" + node);
+            finalPerms.add(perm);
+        }
+
+        if (finalPerms.contains("*")) {
             at.setPermission("*", true);
         } else {
-            for (String perm : perms) {
+            for (String perm : finalPerms) {
                 boolean neg = perm.startsWith("-");
                 String node = neg ? perm.substring(1) : perm;
-                if (node.length() == 0) continue;
-                at.setPermission(node, !neg);
+                if (!node.isEmpty()) at.setPermission(node, !neg);
             }
         }
-        plugin.getLogger().info("[NewGroups] Aplicado grupo '" + groupName + "' a " + p.getName());
+        plugin.getLogger().info("[NewGroups] Permissões aplicadas para " + p.getName() + " (Grupo: " + groupName + ")");
     }
 
     private void applyAllOnline() {
-        Player[] arr = Bukkit.getServer().getOnlinePlayers().toArray(new Player[0]);
-        for (int i = 0; i < arr.length; i++) applyToPlayer(arr[i].getUniqueId());
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            applyToPlayer(p.getUniqueId());
+        }
     }
 
-    @EventHandler public void onJoin(PlayerJoinEvent e) { applyToPlayer(e.getPlayer().getUniqueId()); }
+    @EventHandler
+    public void onJoin(PlayerJoinEvent e) {
+        applyToPlayer(e.getPlayer().getUniqueId());
+    }
 
     public boolean onCommand(final CommandSender sender, Command command, String label, String[] args) {
-        if (!"newgroups".equalsIgnoreCase(command.getName()) && !"newgroup".equalsIgnoreCase(command.getName())) return false;
-        if (args.length == 0) { sendHelp(sender, label); return true; }
+        if (!command.getName().equalsIgnoreCase("newgroups") && !command.getName().equalsIgnoreCase("newgroup")) return false;
+        if (sender instanceof Player && !sender.hasPermission("newgroups.usar.*")) {
+            sender.sendMessage(color("&cVocê não tem permissão para usar este comando."));
+            return true;
+        }
+        if (args.length == 0) {
+            sendHelp(sender, label);
+            return true;
+        }
         String sub = args[0].toLowerCase(Locale.ENGLISH);
-        if ("editor".equals(sub)) {
-            if (!(sender instanceof Player)) { sender.sendMessage(color("&cApenas no jogo.")); return true; }
-            final Player p = (Player) sender;
-            final String sid = serverId != null ? serverId : ("srv-" + Bukkit.getPort());
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() {
-                public void run() {
-                    ensureRegistered(sid);
-                    String url = createEditorSession(sid);
-                    if (url == null) {
-                        Bukkit.getScheduler().runTask(plugin, new Runnable() { public void run() { p.sendMessage(color("&cFalha ao criar sessão.")); }});
-                    } else {
-                        final String msg = color("&aLink do editor: &f" + url);
-                        Bukkit.getScheduler().runTask(plugin, new Runnable() { public void run() { p.sendMessage(msg); }});
-                    }
-                }
-            });
-            return true;
+        switch (sub) {
+            case "editor":
+                handleEditorCommand(sender, label, args);
+                break;
+            case "reload":
+                handleReloadCommand(sender);
+                break;
+            case "setgroup":
+                handleSetGroupCommand(sender, label, args);
+                break;
+            case "whois":
+                handleWhoisCommand(sender, label, args);
+                break;
+            case "importyaml":
+                handleImportYamlCommand(sender);
+                break;
+            case "exportyaml":
+                handleExportYamlCommand(sender);
+                break;
+            default:
+                sendHelp(sender, label);
+                break;
         }
-        if ("reload".equals(sub)) {
-            if (!hasAdmin(sender)) { deny(sender); return true; }
-            try {
-                loadGroupsFromDatabaseToMemory();
-                writeMemoryToYaml(true);
-                applyAllOnline();
-                sender.sendMessage(color("&a[NewGroups] Recarregado do SQLite e exportado para YAML."));
-            } catch (SQLException e) {
-                sender.sendMessage(color("&cFalha ao recarregar do SQLite. Veja o console."));
-                plugin.getLogger().log(Level.SEVERE, "reload()", e);
-            }
-            return true;
-        }
-        if ("setgroup".equals(sub)) {
-            if (!hasAdmin(sender)) { deny(sender); return true; }
-            if (args.length < 3) {
-                sender.sendMessage(color("&cUso: /" + label + " setgroup <player> <group>"));
-                return true;
-            }
-            String playerName = args[1];
-            String groupName = args[2].toLowerCase(Locale.ENGLISH);
-            if (!groups.containsKey(groupName)) {
-                sender.sendMessage(color("&cGrupo '" + groupName + "' não existe."));
-                return true;
-            }
-            OfflinePlayer target = findPlayerByName(playerName);
-            if (target == null || target.getUniqueId() == null) {
-                sender.sendMessage(color("&cJogador '" + playerName + "' não encontrado."));
-                return true;
-            }
-            upsertPlayerGroup(target.getUniqueId(), groupName);
-            Player online = target.getPlayer();
-            if (online != null) applyToPlayer(online.getUniqueId());
-            sender.sendMessage(color("&aGrupo de &f" + playerName + " &aatribuído para &f" + groupName + "&a."));
-            return true;
-        }
-        if ("whois".equals(sub)) {
-            String who = (args.length >= 2 ? args[1] : (sender instanceof Player ? ((Player) sender).getName() : null));
-            if (who == null) { sender.sendMessage(color("&cUso: /" + label + " whois <player>")); return true; }
-            OfflinePlayer target = findPlayerByName(who);
-            if (target == null || target.getUniqueId() == null) {
-                sender.sendMessage(color("&cJogador '" + who + "' não encontrado."));
-                return true;
-            }
-            String g = resolvePlayerGroup(target.getUniqueId());
-            sender.sendMessage(color("&e" + who + " &7-> grupo: &f" + g));
-            return true;
-        }
-        if ("importyaml".equals(sub)) {
-            if (!hasAdmin(sender)) { deny(sender); return true; }
-            try {
-                setupYamlFile();
-                loadGroupsFromYamlToMemory();
-                if (groups.isEmpty()) {
-                    sender.sendMessage(color("&cYAML vazio. Nada a importar."));
-                    return true;
-                }
-                writeMemoryToDatabase(true);
-                applyAllOnline();
-                sender.sendMessage(color("&aImportado do YAML para SQLite e reaplicado."));
-            } catch (Exception e) {
-                sender.sendMessage(color("&cFalha ao importar YAML -> SQLite. Veja o console."));
-                plugin.getLogger().log(Level.SEVERE, "importyaml()", e);
-            }
-            return true;
-        }
-        if ("exportyaml".equals(sub)) {
-            if (!hasAdmin(sender)) { deny(sender); return true; }
-            try {
-                loadGroupsFromDatabaseToMemory();
-                writeMemoryToYaml(true);
-                sender.sendMessage(color("&aExportado do SQLite para YAML."));
-            } catch (SQLException e) {
-                sender.sendMessage(color("&cFalha ao exportar SQLite -> YAML. Veja o console."));
-                plugin.getLogger().log(Level.SEVERE, "exportyaml()", e);
-            }
-            return true;
-        }
-        sendHelp(sender, label);
         return true;
     }
 
+    private void handleEditorCommand(final CommandSender sender, String label, String[] args) {
+        if (!(sender instanceof Player)) {
+            sender.sendMessage(color("&cApenas no jogo."));
+            return;
+        }
+        final Player p = (Player) sender;
+        if (args.length > 1 && "fechar".equalsIgnoreCase(args[1])) {
+            Integer taskId = editorTasks.remove(p.getUniqueId());
+            if (taskId != null) {
+                Bukkit.getScheduler().cancelTask(taskId);
+                p.sendMessage(color("&e[NewGroups] Verificação em tempo real desativada."));
+            } else {
+                p.sendMessage(color("&c[NewGroups] Verificação em tempo real não estava ativa."));
+            }
+            return;
+        }
+        if (editorTasks.containsKey(p.getUniqueId())) {
+            p.sendMessage(color("&c[NewGroups] A verificação já está ativa. Use /" + label + " editor fechar para parar."));
+            return;
+        }
+        final String sid = serverId != null ? serverId : ("srv-" + Bukkit.getPort());
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            ensureRegistered(sid);
+            String url = createEditorSession(sid);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (url != null) {
+                    p.sendMessage(color("&aLink do editor: &f" + url));
+                    p.sendMessage(color("&e[NewGroups] Verificação em tempo real ativada (a cada 1s). Use /ng editor fechar para parar."));
+                    int taskId = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> pullAndApplyVerbose(sid), 20L, 20L).getTaskId();
+                    editorTasks.put(p.getUniqueId(), taskId);
+                } else {
+                    p.sendMessage(color("&cFalha ao criar sessão."));
+                }
+            });
+        });
+    }
+
+    private void handleReloadCommand(CommandSender sender) {
+        if (!hasAdmin(sender)) { deny(sender); return; }
+        try {
+            loadGroupsFromDatabaseToMemory();
+            writeMemoryToYaml(true);
+            applyAllOnline();
+            sender.sendMessage(color("&a[NewGroups] Recarregado do SQLite e exportado para YAML."));
+        } catch (SQLException e) {
+            sender.sendMessage(color("&cFalha ao recarregar do SQLite. Veja o console."));
+            plugin.getLogger().log(Level.SEVERE, "reload()", e);
+        }
+    }
+
+    private void handleSetGroupCommand(CommandSender sender, String label, String[] args) {
+        if (!hasAdmin(sender)) { deny(sender); return; }
+        if (args.length < 3) {
+            sender.sendMessage(color("&cUso: /" + label + " setgroup <player> <group>"));
+            return;
+        }
+        String playerName = args[1];
+        String groupName = args[2].toLowerCase(Locale.ENGLISH);
+        if (!groups.containsKey(groupName)) {
+            sender.sendMessage(color("&cGrupo '" + groupName + "' não existe."));
+            return;
+        }
+        OfflinePlayer target = findPlayerByName(playerName);
+        if (target == null || target.getUniqueId() == null) {
+            sender.sendMessage(color("&cJogador '" + playerName + "' não encontrado."));
+            return;
+        }
+        upsertPlayerGroup(target.getUniqueId(), groupName);
+        if (target.isOnline()) {
+            applyToPlayer(target.getUniqueId());
+        }
+        sender.sendMessage(color("&aGrupo de &f" + target.getName() + " &aatribuído para &f" + groupName + "&a."));
+    }
+
+    private void handleWhoisCommand(CommandSender sender, String label, String[] args) {
+        String who = (args.length >= 2) ? args[1] : (sender instanceof Player ? sender.getName() : null);
+        if (who == null) {
+            sender.sendMessage(color("&cUso: /" + label + " whois <player>"));
+            return;
+        }
+        OfflinePlayer target = findPlayerByName(who);
+        if (target == null || target.getUniqueId() == null) {
+            sender.sendMessage(color("&cJogador '" + who + "' não encontrado."));
+            return;
+        }
+        String g = resolvePlayerGroup(target.getUniqueId());
+        sender.sendMessage(color("&e" + target.getName() + " &7-> grupo: &f" + g));
+    }
+
+    private void handleImportYamlCommand(CommandSender sender) {
+        if (!hasAdmin(sender)) { deny(sender); return; }
+        try {
+            setupYamlFile();
+            loadGroupsFromYamlToMemory();
+            if (groups.isEmpty()) {
+                sender.sendMessage(color("&cYAML vazio. Nada a importar."));
+                return;
+            }
+            writeMemoryToDatabase(true);
+            applyAllOnline();
+            sender.sendMessage(color("&aImportado do YAML para SQLite e reaplicado."));
+        } catch (Exception e) {
+            sender.sendMessage(color("&cFalha ao importar YAML -> SQLite. Veja o console."));
+            plugin.getLogger().log(Level.SEVERE, "importyaml()", e);
+        }
+    }
+
+    private void handleExportYamlCommand(CommandSender sender) {
+        if (!hasAdmin(sender)) { deny(sender); return; }
+        try {
+            loadGroupsFromDatabaseToMemory();
+            writeMemoryToYaml(true);
+            sender.sendMessage(color("&aExportado do SQLite para YAML."));
+        } catch (SQLException e) {
+            sender.sendMessage(color("&cFalha ao exportar SQLite -> YAML. Veja o console."));
+            plugin.getLogger().log(Level.SEVERE, "exportyaml()", e);
+        }
+    }
+
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        List<String> out = new ArrayList<String>();
-        if (!"newgroups".equalsIgnoreCase(command.getName()) && !"newgroup".equalsIgnoreCase(command.getName())) return out;
+        if (!command.getName().equalsIgnoreCase("newgroups") && !command.getName().equalsIgnoreCase("newgroup")) return Collections.emptyList();
+        if (sender instanceof Player && !sender.hasPermission("newgroups.usar.*")) return Collections.emptyList();
+
+        List<String> completions = new ArrayList<>();
         if (args.length == 1) {
-            out.add("editor");
-            out.add("reload");
-            out.add("setgroup");
-            out.add("whois");
-            out.add("importyaml");
-            out.add("exportyaml");
-            return out;
+            String partial = args[0].toLowerCase(Locale.ENGLISH);
+            for (String sub : Arrays.asList("editor", "reload", "setgroup", "whois", "importyaml", "exportyaml")) {
+                if (sub.startsWith(partial)) completions.add(sub);
+            }
+        } else if (args.length == 2) {
+            if (args[0].equalsIgnoreCase("editor")) {
+                if ("fechar".startsWith(args[1].toLowerCase(Locale.ENGLISH))) completions.add("fechar");
+            }
+        } else if (args.length == 3 && args[0].equalsIgnoreCase("setgroup")) {
+            String partial = args[2].toLowerCase(Locale.ENGLISH);
+            for (String g : groups.keySet()) {
+                if (g.startsWith(partial)) completions.add(g);
+            }
         }
-        if (args.length == 3 && "setgroup".equalsIgnoreCase(args[0])) {
-            for (String g : groups.keySet()) out.add(g);
-            return out;
-        }
-        return out;
+        return completions;
     }
 
     private void sendHelp(CommandSender s, String label) {
         s.sendMessage(color("&6=== NewGroups (1.7.10) ==="));
-        s.sendMessage(color("&e/" + label + " editor &7- Abre sessão via API e te envia o link"));
+        s.sendMessage(color("&e/" + label + " editor &7- Abre a sessão e ativa a verificação."));
+        s.sendMessage(color("&e/" + label + " editor fechar &7- Desativa a verificação em tempo real."));
         s.sendMessage(color("&e/" + label + " reload &7- Recarrega do SQLite e exporta pro YAML"));
         s.sendMessage(color("&e/" + label + " setgroup <player> <group> &7- Define grupo do jogador"));
         s.sendMessage(color("&e/" + label + " whois <player> &7- Mostra o grupo do jogador"));
@@ -581,39 +611,44 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         return s.hasPermission("newgroups.admin") || s.isOp();
     }
 
-    private void deny(CommandSender s) { s.sendMessage(color("&cVocê não tem permissão. (newgroups.admin)")); }
-
-    private OfflinePlayer findPlayerByName(String name) {
-        Player[] arr = Bukkit.getServer().getOnlinePlayers().toArray(new Player[0]);
-        for (int i = 0; i < arr.length; i++) {
-            Player p = arr[i];
-            if (p != null && p.getName() != null && p.getName().equalsIgnoreCase(name)) return p;
-        }
-        OfflinePlayer[] all = Bukkit.getServer().getOfflinePlayers();
-        for (int i = 0; i < all.length; i++) {
-            OfflinePlayer op = all[i];
-            if (op != null && op.getName() != null && op.getName().equalsIgnoreCase(name)) return op;
-        }
-        return null;
+    private void deny(CommandSender s) {
+        s.sendMessage(color("&cVocê não tem permissão. (newgroups.admin)"));
     }
 
-    private static String color(String s) { return s.replace('&', '§'); }
+    private OfflinePlayer findPlayerByName(String name) {
+        Player p = Bukkit.getPlayerExact(name);
+        if (p != null) return p;
+        return Bukkit.getOfflinePlayer(name);
+    }
+
+    private static String color(String s) {
+        return s.replace('&', '§');
+    }
 
     private void startBridgeTasks() {
         final String sid = serverId != null ? serverId : ("srv-" + Bukkit.getPort());
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, new Runnable() { public void run() { ensureRegistered(sid); pushSnapshot(sid); }});
-        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, new Runnable() {
-            public void run() {
-                try { ensureRegistered(sid); pullAndApply(sid); }
-                catch (Throwable t) { plugin.getLogger().log(Level.WARNING, "[NewGroups] pull falhou", t); }
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            ensureRegistered(sid);
+            pushSnapshot(sid);
+            syncPlayers(sid);
+        });
+        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+            try {
+                ensureRegistered(sid);
+                pullAndApply(sid);
+            } catch (Throwable t) {
+                plugin.getLogger().log(Level.WARNING, "[NewGroups] pull falhou", t);
             }
         }, 20L * 10L, 20L * 5L);
-        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, new Runnable() {
-            public void run() {
-                try { ensureRegistered(sid); pushSnapshot(sid); }
-                catch (Throwable t) { plugin.getLogger().log(Level.WARNING, "[NewGroups] push falhou", t); }
+        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+            try {
+                ensureRegistered(sid);
+                pushSnapshot(sid);
+                syncPlayers(sid);
+            } catch (Throwable t) {
+                plugin.getLogger().log(Level.WARNING, "[NewGroups] push/sync falhou", t);
             }
-        }, 20L * 30L, 20L * 60L);
+        }, 20L * 60L, 20L * 60L);
     }
 
     private void ensureRegistered(String sid) {
@@ -626,235 +661,348 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
     }
 
     private String createEditorSession(String sid) {
-        HttpURLConnection conn = null;
         try {
-            URL url = new URL(NG_API_BASE + "/api/v1/editor/sessions");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setConnectTimeout(8000);
-            conn.setReadTimeout(12000);
-            conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            if (NG_API_TOKEN != null && NG_API_TOKEN.length() > 0) conn.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
             String body = "{\"serverId\":\"" + escapeJson(sid) + "\"}";
-            OutputStream os = conn.getOutputStream();
-            os.write(body.getBytes("UTF-8"));
-            os.flush();
-            os.close();
-            int code = conn.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-            String resp = readAll(is);
-            if (code >= 200 && code < 300) {
-                String urlField = extractJsonString(resp, "url");
-                return urlField;
-            } else {
-                plugin.getLogger().warning("[NewGroups] API erro " + code + ": " + resp);
-                return null;
-            }
+            String resp = httpPostJson("/api/v1/editor/sessions", body);
+            return resp != null ? extractJsonString(resp, "url") : null;
         } catch (Throwable t) {
             plugin.getLogger().log(Level.WARNING, "[NewGroups] Falha chamando API de sessão", t);
             return null;
-        } finally { if (conn != null) conn.disconnect(); }
+        }
     }
 
     private void pushSnapshot(String sid) {
         try {
             Map<String, Object> snap = dumpSnapshot();
-            String body = "{\"serverId\":\"" + escapeJson(sid) + "\",\"groups\":" + (String) snap.get("groupsJson") + ",\"users\":" + (String) snap.get("usersJson") + "}";
+            String body = "{\"serverId\":\"" + escapeJson(sid) + "\",\"groups\":" + snap.get("groupsJson") + ",\"users\":" + snap.get("usersJson") + "}";
             httpPostJson("/bridge/push", body);
-        } catch (Throwable t) { plugin.getLogger().log(Level.FINE, "[NewGroups] bridge/push falhou: " + t.getMessage()); }
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.FINE, "[NewGroups] bridge/push falhou: " + t.getMessage());
+        }
+    }
+
+    private void syncPlayers(String sid) {
+        try {
+            OfflinePlayer[] allPlayers = Bukkit.getOfflinePlayers();
+            StringBuilder playersJson = new StringBuilder("[");
+            boolean first = true;
+            for (OfflinePlayer p : allPlayers) {
+                if (p != null && p.getName() != null) {
+                    if (!first) {
+                        playersJson.append(",");
+                    }
+                    playersJson.append("{\"uuid\":\"").append(p.getUniqueId().toString()).append("\",\"username\":\"").append(escapeJson(p.getName())).append("\"}");
+                    first = false;
+                }
+            }
+            playersJson.append("]");
+            String body = "{\"serverId\":\"" + escapeJson(sid) + "\",\"players\":" + playersJson.toString() + "}";
+            httpPostJson("/bridge/sync-players", body);
+        } catch (Throwable t) {
+            plugin.getLogger().log(Level.FINE, "[NewGroups] /bridge/sync-players falhou: " + t.getMessage());
+        }
     }
 
     private void pullAndApply(String sid) {
         String resp = httpGet("/bridge/pull?serverId=" + urlEncode(sid));
-        if (resp == null || resp.length() == 0) return;
-        if (resp.contains("\"empty\":true")) return;
+        if (resp == null || resp.length() == 0 || resp.contains("\"empty\":true")) return;
+
         List<PGroup> newGroups = parseEditorGroups(resp);
-        if (newGroups == null) return;
+        List<PUser> newUsers = parseEditorUsers(resp);
+        if (newGroups == null || newUsers == null) return;
+
         try {
             applyPulledGroups(newGroups);
+            applyPulledUsers(newUsers);
             loadGroupsFromDatabaseToMemory();
             writeMemoryToYaml(true);
             applyAllOnline();
-            plugin.getLogger().info("[NewGroups] Aplicadas mudanças do editor (" + newGroups.size() + " grupos).");
+            plugin.getLogger().info("[NewGroups] Aplicadas mudanças do editor (" + newGroups.size() + " grupos, " + newUsers.size() + " usuários).");
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "[NewGroups] Falha aplicando payload do editor", e);
         }
     }
 
-    private Map<String, Object> dumpSnapshot() throws SQLException {
-        StringBuilder gsb = new StringBuilder();
-        gsb.append("[");
-        boolean first = true;
-        Statement st = conn.createStatement();
-        ResultSet rs = st.executeQuery("SELECT name,is_default,prefix FROM groups");
+    private void pullAndApplyVerbose(String sid) {
+        final Map<String, Set<String>> beforeGroups = new HashMap<>();
+        for (Group g : groups.values()) {
+            beforeGroups.put(g.name, new HashSet<>(g.permissions));
+        }
+        final Map<UUID, Set<String>> beforeUserPerms = new HashMap<>();
+        final Map<UUID, String> beforeUserGroups = new HashMap<>();
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT uuid, group_name FROM players")) {
+            while (rs.next()) {
+                UUID uuid = UUID.fromString(rs.getString("uuid"));
+                beforeUserGroups.put(uuid, rs.getString("group_name"));
+                beforeUserPerms.put(uuid, getPlayerPermissionsFromDB(uuid));
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Falha ao criar snapshot de usuários", e);
+        }
+
+        String resp = httpGet("/bridge/pull?serverId=" + urlEncode(sid));
+        if (resp == null || resp.length() == 0 || resp.contains("\"empty\":true")) return;
+
+        List<PGroup> newGroups = parseEditorGroups(resp);
+        List<PUser> newUsers = parseEditorUsers(resp);
+        if (newGroups == null || newUsers == null) return;
+
         try {
+            applyPulledGroups(newGroups);
+            applyPulledUsers(newUsers);
+            loadGroupsFromDatabaseToMemory();
+            writeMemoryToYaml(true);
+            applyAllOnline();
+
+            final Map<String, Set<String>> afterGroups = new HashMap<>();
+            for (Group g : groups.values()) {
+                afterGroups.put(g.name, new HashSet<>(g.permissions));
+            }
+
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                List<String> changes = new ArrayList<>();
+                compareMaps(beforeGroups, afterGroups, "Grupo", "Permissão", changes);
+
+                final Map<UUID, String> afterUserGroups = new HashMap<>();
+                try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT uuid, group_name FROM players")) {
+                    while (rs.next()) {
+                        afterUserGroups.put(UUID.fromString(rs.getString("uuid")), rs.getString("group_name"));
+                    }
+                } catch (SQLException ignored) {}
+
+                Set<UUID> allUsers = new HashSet<>(beforeUserGroups.keySet());
+                allUsers.addAll(afterUserGroups.keySet());
+
+                for (UUID uuid : allUsers) {
+                    String beforeGroup = beforeUserGroups.get(uuid);
+                    String afterGroup = afterUserGroups.get(uuid);
+                    if (!Objects.equals(beforeGroup, afterGroup)) {
+                        changes.add(color("&6[NG] &fGrupo de &e" + getPlayerName(uuid) + " &falterado para &e" + (afterGroup != null ? afterGroup : "Padrão")));
+                    }
+
+                    Set<String> beforePerms = beforeUserPerms.getOrDefault(uuid, Collections.emptySet());
+                    Set<String> afterPerms = getPlayerPermissionsFromDB(uuid);
+                    comparePerms(beforePerms, afterPerms, "Permissão do jogador &e" + getPlayerName(uuid), changes);
+                }
+
+
+                if (!changes.isEmpty()) broadcastToStaff(changes);
+            });
+
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "[NewGroups] Falha aplicando payload do editor (verbose)", e);
+        }
+    }
+
+    private void comparePerms(Set<String> before, Set<String> after, String context, List<String> changes) {
+        for (String perm : after) {
+            if (!before.contains(perm)) {
+                changes.add(color("&6[NG] &f" + context + " &e" + perm + " &afoi adicionada&f."));
+            }
+        }
+        for (String perm : before) {
+            if (!after.contains(perm)) {
+                changes.add(color("&6[NG] &f" + context + " &e" + perm + " &cfoi removida&f."));
+            }
+        }
+    }
+
+    private void compareMaps(Map<String, Set<String>> before, Map<String, Set<String>> after, String entityType, String permType, List<String> changes) {
+        for (String name : after.keySet()) {
+            if (!before.containsKey(name)) {
+                changes.add(color("&6[NG] &f" + entityType + " &e" + name + " &afoi criado&f."));
+            }
+        }
+        for (String name : before.keySet()) {
+            if (!after.containsKey(name)) {
+                changes.add(color("&6[NG] &f" + entityType + " &e" + name + " &cfoi deletado&f."));
+            } else {
+                comparePerms(before.get(name), after.get(name), permType + " no grupo &e" + name, changes);
+            }
+        }
+    }
+
+    private String getPlayerName(UUID uuid) {
+        OfflinePlayer p = Bukkit.getOfflinePlayer(uuid);
+        return p != null && p.getName() != null ? p.getName() : uuid.toString().substring(0, 8);
+    }
+
+
+    private void broadcastToStaff(final List<String> messages) {
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (player.hasPermission("newgroups.chat")) {
+                    for (String message : messages) player.sendMessage(message);
+                }
+            }
+        });
+    }
+
+    private Map<String, Object> dumpSnapshot() throws SQLException {
+        StringBuilder gsb = new StringBuilder("[");
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT name, is_default, prefix FROM groups")) {
+            boolean first = true;
             while (rs.next()) {
                 if (!first) gsb.append(",");
                 first = false;
                 String name = rs.getString(1);
-                boolean isDef = rs.getInt(2) == 1;
-                String prefix = rs.getString(3);
-                List<String> parents = new ArrayList<String>();
-                PreparedStatement psPar = conn.prepareStatement("SELECT parent_name FROM group_parents WHERE group_name=?");
-                psPar.setString(1, name);
-                ResultSet rPar = psPar.executeQuery();
-                while (rPar.next()) parents.add(rPar.getString(1));
-                rPar.close(); psPar.close();
-                List<String> perms = new ArrayList<String>();
-                PreparedStatement psPerm = conn.prepareStatement("SELECT permission FROM group_permissions WHERE group_name=?");
-                psPerm.setString(1, name);
-                ResultSet rPerm = psPerm.executeQuery();
-                while (rPerm.next()) perms.add(rPerm.getString(1));
-                rPerm.close(); psPerm.close();
-                gsb.append("{");
-                gsb.append("\"id\":\"").append(escapeJson(name)).append("\",");
+                gsb.append("{\"id\":\"").append(escapeJson(name)).append("\",");
                 gsb.append("\"name\":\"").append(escapeJson(name)).append("\",");
-                gsb.append("\"weight\":").append(isDef ? "1" : "10").append(",");
-                gsb.append("\"inherits\":[");
-                for (int i = 0; i < parents.size(); i++) { if (i>0) gsb.append(","); gsb.append("\"").append(escapeJson(parents.get(i))).append("\""); }
-                gsb.append("],");
-                gsb.append("\"prefix\":\"").append(escapeJson(prefix)).append("\",");
-                gsb.append("\"permissions\":[");
-                for (int i = 0; i < perms.size(); i++) {
-                    if (i>0) gsb.append(",");
-                    String node = perms.get(i);
-                    boolean val = !node.startsWith("-");
-                    String pure = val ? node : node.substring(1);
-                    gsb.append("{\"node\":\"").append(escapeJson(pure)).append("\",\"value\":").append(val ? "true" : "false").append("}");
-                }
-                gsb.append("]}");
+                gsb.append("\"weight\":").append(rs.getInt(2) == 1 ? "1" : "10").append(",");
+                gsb.append("\"prefix\":\"").append(escapeJson(rs.getString(3))).append("\",");
+                gsb.append("\"inherits\":").append(getJsonArray("SELECT parent_name FROM group_parents WHERE group_name=?", name)).append(",");
+                gsb.append("\"permissions\":").append(getPermsJson("SELECT permission FROM group_permissions WHERE group_name=?", name)).append("}");
             }
-        } finally { try { rs.close(); } catch (SQLException ignored) {} try { st.close(); } catch (SQLException ignored) {} }
+        }
         gsb.append("]");
-        StringBuilder usb = new StringBuilder();
-        usb.append("[");
-        boolean uf = true;
-        Statement su = conn.createStatement();
-        ResultSet ru = su.executeQuery("SELECT uuid,group_name FROM players");
-        try {
-            while (ru.next()) {
-                if (!uf) usb.append(",");
-                uf = false;
-                usb.append("{\"uuid\":\"").append(escapeJson(ru.getString(1))).append("\",\"group\":\"").append(escapeJson(ru.getString(2))).append("\"}");
+
+        StringBuilder usb = new StringBuilder("[");
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT uuid, group_name FROM players")) {
+            boolean first = true;
+            while (rs.next()) {
+                if (!first) usb.append(",");
+                first = false;
+                String uuid = rs.getString(1);
+                String group = rs.getString(2);
+                usb.append("{\"uuid\":\"").append(escapeJson(uuid)).append("\",");
+                if (group != null) usb.append("\"group\":\"").append(escapeJson(group)).append("\",");
+                usb.append("\"permissions\":").append(getPermsJson("SELECT permission FROM player_permissions WHERE uuid=?", uuid)).append("}");
             }
-        } finally { try { ru.close(); } catch (SQLException ignored) {} try { su.close(); } catch (SQLException ignored) {} }
+        }
         usb.append("]");
-        Map<String, Object> out = new HashMap<String, Object>();
+
+        Map<String, Object> out = new HashMap<>();
         out.put("groupsJson", gsb.toString());
         out.put("usersJson", usb.toString());
         return out;
     }
 
-    private static final class PGroup {
-        String name;
-        int weight;
-        List<String> inherits = new ArrayList<String>();
-        List<PNode> permissions = new ArrayList<PNode>();
-        String prefix = "";
-        boolean isDefault = false;
+    private String getJsonArray(String sql, String param) throws SQLException {
+        StringBuilder sb = new StringBuilder("[");
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, param);
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean first = true;
+                while (rs.next()) {
+                    if (!first) sb.append(",");
+                    first = false;
+                    sb.append("\"").append(escapeJson(rs.getString(1))).append("\"");
+                }
+            }
+        }
+        return sb.append("]").toString();
     }
+
+    private String getPermsJson(String sql, String param) throws SQLException {
+        StringBuilder sb = new StringBuilder("[");
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, param);
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean first = true;
+                while (rs.next()) {
+                    if (!first) sb.append(",");
+                    first = false;
+                    String node = rs.getString(1);
+                    boolean val = !node.startsWith("-");
+                    String pure = val ? node : node.substring(1);
+                    sb.append("{\"node\":\"").append(escapeJson(pure)).append("\",\"value\":").append(val).append("}");
+                }
+            }
+        }
+        return sb.append("]").toString();
+    }
+
+    private static final class PGroup { String name; int weight; List<String> inherits = new ArrayList<>(); List<PNode> permissions = new ArrayList<>(); String prefix = ""; boolean isDefault = false; }
+    private static final class PUser { String uuid; String group; List<PNode> permissions = new ArrayList<>(); }
     private static final class PNode { String node; boolean value; }
 
     private List<PGroup> parseEditorGroups(String json) {
-        int gi = json.indexOf("\"groups\"");
-        if (gi < 0) return null;
-        int si = json.indexOf('[', gi);
-        if (si < 0) return null;
-        int depth = 0; int end = -1;
-        for (int i = si; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (c == '[') depth++;
-            else if (c == ']') { depth--; if (depth == 0) { end = i; break; } }
-        }
-        if (end < 0) return null;
-        String arr = json.substring(si, end + 1);
-        List<PGroup> list = new ArrayList<PGroup>();
+        String arrJson = extractJsonArrayBody(json, "groups");
+        if (arrJson == null) return null;
+        List<PGroup> list = new ArrayList<>();
         int idx = 0;
         while (true) {
-            int objStart = arr.indexOf('{', idx);
-            if (objStart < 0) break;
-            int d = 0; int objEnd = -1; boolean inStr = false;
-            for (int i = objStart; i < arr.length(); i++) {
-                char c = arr.charAt(i);
-                if (c == '"' && arr.charAt(i - 1) != '\\') inStr = !inStr;
-                if (!inStr) {
-                    if (c == '{') d++;
-                    else if (c == '}') { d--; if (d == 0) { objEnd = i; break; } }
-                }
-            }
-            if (objEnd < 0) break;
-            String obj = arr.substring(objStart, objEnd + 1);
+            String obj = extractJsonObject(arrJson, idx);
+            if (obj == null) break;
+            idx = arrJson.indexOf(obj, idx) + obj.length();
             PGroup g = new PGroup();
-            String nm = extractJsonString(obj, "name");
-            if (nm == null) nm = extractJsonString(obj, "id");
-            g.name = nm != null ? nm.toLowerCase(Locale.ENGLISH) : null;
-            String pref = extractJsonString(obj, "prefix");
-            if (pref != null) g.prefix = pref;
-            String weightStr = extractJsonNumber(obj, "weight");
-            try { if (weightStr != null) g.weight = Integer.parseInt(weightStr); } catch (Throwable ignored) {}
-            if (containsKey(obj, "inherits")) {
-                List<String> inh = extractStringArray(obj, "inherits");
-                if (inh != null) g.inherits.addAll(inh);
-            }
-            if (containsKey(obj, "permissions")) {
-                List<String[]> nodes = extractPermArray(obj, "permissions");
-                for (int i = 0; i < nodes.size(); i++) {
-                    String[] e = nodes.get(i);
-                    PNode pn = new PNode();
-                    pn.node = e[0];
-                    pn.value = "true".equalsIgnoreCase(e[1]);
-                    g.permissions.add(pn);
-                }
-            }
+            g.name = extractJsonString(obj, "name", extractJsonString(obj, "id"));
+            g.prefix = extractJsonString(obj, "prefix", "");
+            g.weight = Integer.parseInt(extractJsonNumber(obj, "weight", "1"));
+            g.inherits = extractStringArray(obj, "inherits");
+            g.permissions = extractPermNodes(obj, "permissions");
             g.isDefault = g.weight <= 1;
             if (g.name != null) list.add(g);
-            idx = objEnd + 1;
+        }
+        return list;
+    }
+
+    private List<PUser> parseEditorUsers(String json) {
+        String arrJson = extractJsonArrayBody(json, "users");
+        if (arrJson == null) return new ArrayList<>();
+        List<PUser> list = new ArrayList<>();
+        int idx = 0;
+        while (true) {
+            String obj = extractJsonObject(arrJson, idx);
+            if (obj == null) break;
+            idx = arrJson.indexOf(obj, idx) + obj.length();
+            PUser u = new PUser();
+            u.uuid = extractJsonString(obj, "uuid", null);
+            u.group = extractJsonString(obj, "group", null);
+            u.permissions = extractPermNodes(obj, "permissions");
+            if (u.uuid != null) list.add(u);
         }
         return list;
     }
 
     private void applyPulledGroups(List<PGroup> newGroups) throws SQLException {
-        Statement st = conn.createStatement();
-        try {
+        try (Statement st = conn.createStatement()) {
             st.executeUpdate("DELETE FROM group_permissions");
             st.executeUpdate("DELETE FROM group_parents");
             st.executeUpdate("DELETE FROM groups");
-        } finally { try { st.close(); } catch (SQLException ignored) {} }
-        PreparedStatement upG = conn.prepareStatement("INSERT OR REPLACE INTO groups(name,is_default,prefix) VALUES(?,?,?)");
-        PreparedStatement upP = conn.prepareStatement("INSERT OR REPLACE INTO group_permissions(group_name,permission) VALUES(?,?)");
-        PreparedStatement upPar = conn.prepareStatement("INSERT OR REPLACE INTO group_parents(group_name,parent_name) VALUES(?,?)");
-        try {
-            for (int i = 0; i < newGroups.size(); i++) {
-                PGroup g = newGroups.get(i);
+        }
+        try (PreparedStatement upG = conn.prepareStatement("INSERT OR REPLACE INTO groups(name,is_default,prefix) VALUES(?,?,?)");
+             PreparedStatement upP = conn.prepareStatement("INSERT OR REPLACE INTO group_permissions(group_name,permission) VALUES(?,?)");
+             PreparedStatement upPar = conn.prepareStatement("INSERT OR REPLACE INTO group_parents(group_name,parent_name) VALUES(?,?)")) {
+            for (PGroup g : newGroups) {
                 upG.setString(1, g.name);
                 upG.setInt(2, g.isDefault ? 1 : 0);
                 upG.setString(3, g.prefix == null ? "" : g.prefix);
                 upG.addBatch();
+                for (String parent : g.inherits) {
+                    upPar.setString(1, g.name); upPar.setString(2, parent); upPar.addBatch();
+                }
+                for (PNode n : g.permissions) {
+                    upP.setString(1, g.name); upP.setString(2, n.value ? n.node : "-" + n.node); upP.addBatch();
+                }
             }
             upG.executeBatch();
-            for (int i = 0; i < newGroups.size(); i++) {
-                PGroup g = newGroups.get(i);
-                for (int j = 0; j < g.inherits.size(); j++) {
-                    upPar.setString(1, g.name);
-                    upPar.setString(2, g.inherits.get(j));
-                    upPar.addBatch();
-                }
-                for (int j = 0; j < g.permissions.size(); j++) {
-                    PNode n = g.permissions.get(j);
-                    String node = n.value ? n.node : ("-" + n.node);
-                    upP.setString(1, g.name);
-                    upP.setString(2, node);
-                    upP.addBatch();
-                }
-            }
             upPar.executeBatch();
             upP.executeBatch();
             conn.commit();
-        } finally {
-            try { upG.close(); } catch (SQLException ignored) {}
-            try { upP.close(); } catch (SQLException ignored) {}
-            try { upPar.close(); } catch (SQLException ignored) {}
+        }
+    }
+
+    private void applyPulledUsers(List<PUser> newUsers) throws SQLException {
+        try (Statement st = conn.createStatement()) {
+            st.executeUpdate("DELETE FROM player_permissions");
+            st.executeUpdate("DELETE FROM players");
+        }
+        try (PreparedStatement upPl = conn.prepareStatement("INSERT INTO players(uuid,group_name) VALUES(?,?)");
+             PreparedStatement upP = conn.prepareStatement("INSERT INTO player_permissions(uuid,permission) VALUES(?,?)")) {
+            for (PUser u : newUsers) {
+                upPl.setString(1, u.uuid);
+                upPl.setString(2, u.group);
+                upPl.addBatch();
+                for (PNode n : u.permissions) {
+                    upP.setString(1, u.uuid);
+                    upP.setString(2, n.value ? n.node : "-" + n.node);
+                    upP.addBatch();
+                }
+            }
+            upPl.executeBatch();
+            upP.executeBatch();
+            conn.commit();
         }
     }
 
@@ -868,20 +1016,23 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             c.setReadTimeout(15000);
             c.setDoOutput(true);
             c.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-            if (NG_API_TOKEN != null && NG_API_TOKEN.length() > 0) c.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
-            OutputStream os = c.getOutputStream();
-            os.write(body.getBytes("UTF-8"));
-            os.flush(); os.close();
+            if (NG_API_TOKEN != null && !NG_API_TOKEN.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
+            try (OutputStream os = c.getOutputStream()) {
+                os.write(body.getBytes("UTF-8"));
+            }
             int code = c.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? c.getInputStream() : c.getErrorStream();
-            String resp = readAll(is);
-            if (code >= 200 && code < 300) return resp;
-            plugin.getLogger().warning("[NewGroups] POST " + path + " -> " + code + ": " + resp);
-            return null;
+            try (InputStream is = (code >= 200 && code < 300) ? c.getInputStream() : c.getErrorStream()) {
+                String resp = readAll(is);
+                if (code >= 200 && code < 300) return resp;
+                plugin.getLogger().warning("[NewGroups] POST " + path + " -> " + code + ": " + resp);
+                return null;
+            }
         } catch (Throwable t) {
             plugin.getLogger().log(Level.FINE, "[NewGroups] POST falhou " + path, t);
             return null;
-        } finally { if (c != null) c.disconnect(); }
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     private String httpGet(String path) {
@@ -892,30 +1043,73 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
             c.setRequestMethod("GET");
             c.setConnectTimeout(8000);
             c.setReadTimeout(15000);
-            if (NG_API_TOKEN != null && NG_API_TOKEN.length() > 0) c.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
+            if (NG_API_TOKEN != null && !NG_API_TOKEN.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + NG_API_TOKEN);
             int code = c.getResponseCode();
-            InputStream is = (code >= 200 && code < 300) ? c.getInputStream() : c.getErrorStream();
-            String resp = readAll(is);
-            if (code >= 200 && code < 300) return resp;
-            plugin.getLogger().warning("[NewGroups] GET " + path + " -> " + code + ": " + resp);
-            return null;
+            try (InputStream is = (code >= 200 && code < 300) ? c.getInputStream() : c.getErrorStream()) {
+                String resp = readAll(is);
+                if (code >= 200 && code < 300) return resp;
+                plugin.getLogger().warning("[NewGroups] GET " + path + " -> " + code + ": " + resp);
+                return null;
+            }
         } catch (Throwable t) {
             plugin.getLogger().log(Level.FINE, "[NewGroups] GET falhou " + path, t);
             return null;
-        } finally { if (c != null) c.disconnect(); }
+        } finally {
+            if (c != null) c.disconnect();
+        }
     }
 
     private static String readAll(InputStream is) throws IOException {
         if (is == null) return "";
-        BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-        StringBuilder sb = new StringBuilder();
-        char[] buf = new char[2048];
-        int r;
-        while ((r = br.read(buf)) != -1) sb.append(buf, 0, r);
-        br.close();
-        return sb.toString();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"))) {
+            StringBuilder sb = new StringBuilder();
+            char[] buf = new char[2048];
+            int r;
+            while ((r = br.read(buf)) != -1) sb.append(buf, 0, r);
+            return sb.toString();
+        }
     }
 
+    private static String extractJsonObject(String json, int startIndex) {
+        int objStart = json.indexOf('{', startIndex);
+        if (objStart < 0) return null;
+        int depth = 0;
+        boolean inStr = false;
+        for (int i = objStart; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '"' && (i == 0 || json.charAt(i - 1) != '\\')) inStr = !inStr;
+            if (!inStr) {
+                if (c == '{') depth++;
+                else if (c == '}') {
+                    depth--;
+                    if (depth == 0) return json.substring(objStart, i + 1);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String extractJsonArrayBody(String json, String field) {
+        int fieldIndex = json.indexOf("\"" + field + "\"");
+        if (fieldIndex < 0) return null;
+        int arrStart = json.indexOf('[', fieldIndex);
+        if (arrStart < 0) return null;
+        int depth = 0;
+        for (int i = arrStart; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (c == '[') depth++;
+            else if (c == ']') {
+                depth--;
+                if (depth == 0) return json.substring(arrStart + 1, i);
+            }
+        }
+        return null;
+    }
+
+    private static String extractJsonString(String json, String field, String def) {
+        String val = extractJsonString(json, field);
+        return val != null ? val : def;
+    }
     private static String extractJsonString(String json, String field) {
         if (json == null) return null;
         String key = "\"" + field + "\"";
@@ -926,10 +1120,15 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         int q1 = json.indexOf('"', c + 1);
         if (q1 < 0) return null;
         int q2 = json.indexOf('"', q1 + 1);
+        while (q2 > 0 && json.charAt(q2 - 1) == '\\') q2 = json.indexOf('"', q2 + 1);
         if (q2 < 0) return null;
-        return json.substring(q1 + 1, q2);
+        return unescapeJson(json.substring(q1 + 1, q2));
     }
 
+    private static String extractJsonNumber(String json, String field, String def) {
+        String val = extractJsonNumber(json, field);
+        return val != null ? val : def;
+    }
     private static String extractJsonNumber(String json, String field) {
         if (json == null) return null;
         String key = "\"" + field + "\"";
@@ -941,83 +1140,40 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         while (s < json.length() && Character.isWhitespace(json.charAt(s))) s++;
         int e = s;
         while (e < json.length() && "-0123456789".indexOf(json.charAt(e)) >= 0) e++;
-        if (e > s) return json.substring(s, e);
-        return null;
-    }
-
-    private static boolean containsKey(String json, String field) {
-        return json != null && json.indexOf("\"" + field + "\"") >= 0;
+        return e > s ? json.substring(s, e) : null;
     }
 
     private static List<String> extractStringArray(String json, String field) {
-        List<String> out = new ArrayList<String>();
-        String key = "\"" + field + "\"";
-        int i = json.indexOf(key);
-        if (i < 0) return out;
-        int a = json.indexOf('[', i);
-        if (a < 0) return out;
-        int d = 0; int end = -1;
-        boolean inStr = false;
-        for (int k = a; k < json.length(); k++) {
-            char c = json.charAt(k);
-            if (c == '"' && json.charAt(Math.max(0, k - 1)) != '\\') inStr = !inStr;
-            if (!inStr) {
-                if (c == '[') d++;
-                else if (c == ']') { d--; if (d == 0) { end = k; break; } }
-            }
-        }
-        if (end < 0) return out;
-        String arr = json.substring(a, end + 1);
+        List<String> out = new ArrayList<>();
+        String arrBody = extractJsonArrayBody(json, field);
+        if (arrBody == null) return out;
         int idx = 0;
-        while (true) {
-            int q1 = arr.indexOf('"', idx);
+        while (idx < arrBody.length()) {
+            int q1 = arrBody.indexOf('"', idx);
             if (q1 < 0) break;
-            int q2 = arr.indexOf('"', q1 + 1);
+            int q2 = arrBody.indexOf('"', q1 + 1);
+            while (q2 > 0 && arrBody.charAt(q2-1) == '\\') q2 = arrBody.indexOf('"', q2 + 1);
             if (q2 < 0) break;
-            out.add(unescapeJson(arr.substring(q1 + 1, q2)));
+            out.add(unescapeJson(arrBody.substring(q1 + 1, q2)));
             idx = q2 + 1;
         }
         return out;
     }
 
-    private static List<String[]> extractPermArray(String json, String field) {
-        List<String[]> out = new ArrayList<String[]>();
-        String key = "\"" + field + "\"";
-        int i = json.indexOf(key);
-        if (i < 0) return out;
-        int a = json.indexOf('[', i);
-        if (a < 0) return out;
-        int d = 0; int end = -1;
-        boolean inStr = false;
-        for (int k = a; k < json.length(); k++) {
-            char c = json.charAt(k);
-            if (c == '"' && json.charAt(Math.max(0, k - 1)) != '\\') inStr = !inStr;
-            if (!inStr) {
-                if (c == '[') d++;
-                else if (c == ']') { d--; if (d == 0) { end = k; break; } }
-            }
-        }
-        if (end < 0) return out;
-        String arr = json.substring(a, end + 1);
+    private static List<PNode> extractPermNodes(String json, String field) {
+        List<PNode> out = new ArrayList<>();
+        String arrBody = extractJsonArrayBody(json, field);
+        if (arrBody == null) return out;
         int idx = 0;
         while (true) {
-            int o = arr.indexOf('{', idx);
-            if (o < 0) break;
-            int depth = 0; int oe = -1; boolean str = false;
-            for (int k = o; k < arr.length(); k++) {
-                char c = arr.charAt(k);
-                if (c == '"' && arr.charAt(Math.max(0, k - 1)) != '\\') str = !str;
-                if (!str) {
-                    if (c == '{') depth++;
-                    else if (c == '}') { depth--; if (depth == 0) { oe = k; break; } }
-                }
-            }
-            if (oe < 0) break;
-            String obj = arr.substring(o, oe + 1);
-            String node = extractJsonString(obj, "node");
-            String val = "true".equalsIgnoreCase(extractJsonString(obj, "value")) ? "true" : (obj.contains("\"value\":true") ? "true" : "false");
-            out.add(new String[]{ node == null ? "" : node, val });
-            idx = oe + 1;
+            String obj = extractJsonObject(arrBody, idx);
+            if (obj == null) break;
+            idx = arrBody.indexOf(obj, idx) + obj.length();
+            PNode pn = new PNode();
+            pn.node = extractJsonString(obj, "node");
+            String valueStr = extractJsonString(obj, "value");
+            pn.value = valueStr != null ? Boolean.parseBoolean(valueStr) : (obj.contains("\"value\":true"));
+            if (pn.node != null) out.add(pn);
         }
         return out;
     }
@@ -1032,16 +1188,23 @@ public final class NewGroup implements Listener, CommandExecutor, TabCompleter {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < s.length(); i++) {
             char ch = s.charAt(i);
-            if (ch == '"' || ch == '\\') sb.append('\\').append(ch);
-            else if (ch == '\n') sb.append("\\n");
-            else if (ch == '\r') sb.append("\\r");
-            else if (ch == '\t') sb.append("\\t");
-            else sb.append(ch);
+            switch (ch) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default: sb.append(ch);
+            }
         }
         return sb.toString();
     }
 
     private static String urlEncode(String s) {
-        try { return java.net.URLEncoder.encode(s, "UTF-8"); } catch (Exception e) { return s; }
+        try {
+            return java.net.URLEncoder.encode(s, "UTF-8");
+        } catch (Exception e) {
+            return s;
+        }
     }
 }
