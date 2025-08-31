@@ -17,6 +17,32 @@ menu:
   option-receive: '&7Você receberá &e%value% TPs'
 
 # Configuração para fallback (NÃO ALTERAR)
+orb 1:
+  slot:
+    x: 3
+    y: 2
+
+orb 16:
+  slot:
+    x: 5
+    y: 2
+
+orb64:
+  slot:
+    x: 7
+    y: 2
+
+
+orb all:
+  slot:
+    x: 5
+    y: 4
+
+info-orb:
+  slot:
+    x: 5
+    y: 1
+
 item:
   id: 4146
   data: 0

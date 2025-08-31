@@ -6,10 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
-import java.util.Iterator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public final class ConfigManager {
 
@@ -19,21 +16,21 @@ public final class ConfigManager {
     private File file;
     private FileConfiguration cfg;
 
-    private final LinkedHashMap<String, OrbDefinition> orbs = new LinkedHashMap<String, OrbDefinition>();
-    private final LinkedHashMap<String, Integer> levelsBonus = new LinkedHashMap<String, Integer>();
-    private final LinkedHashMap<String, String> levelsPerm  = new LinkedHashMap<String, String>();
+    private final LinkedHashMap<String, OrbDefinition> orbs = new LinkedHashMap<>();
+    private final LinkedHashMap<String, Integer> levelsBonus = new LinkedHashMap<>();
+    private final LinkedHashMap<String, String> levelsPerm  = new LinkedHashMap<>();
+
+    private final Map<String, SlotPos> slots = new HashMap<>();
 
     public ConfigManager(NewCore plugin) {
         this.plugin = plugin;
         reload();
     }
 
-    /** Garante que o recurso NewOrbs.yml exista no disco (na pasta do NewCore). */
     public static void ensureDefaultFile(NewCore plugin) {
         try {
             File f = new File(plugin.getDataFolder(), FILE_NAME);
             if (!f.exists()) {
-                // NewOrbs.yml precisa estar empacotado dentro do JAR do NewCore (resources)
                 plugin.saveResource(FILE_NAME, false);
             }
         } catch (IllegalArgumentException ignored) {
@@ -50,6 +47,7 @@ public final class ConfigManager {
         this.cfg  = YamlConfiguration.loadConfiguration(file);
         loadOrbs();
         loadLevels();
+        loadSlots();
     }
 
     public FileConfiguration raw() { return cfg; }
@@ -73,12 +71,12 @@ public final class ConfigManager {
     public String optionReceive()     { return cfg.getString("menu.option-receive", "&7Você receberá &e%value% TPs"); }
 
     // ====== mensagens ======
-    public String msgInsufficient()   { return cfg.getString("messages.insufficient-orbs", "%prefix% &cVocê não possui orbs suficientes para trocar."); }
-    public String msgTradeTitle()     { return cfg.getString("messages.trade-title", "%prefix% &aVocê trocou seus orbs por TPs com sucesso!"); }
-    public String msgTradeWithBonus() { return cfg.getString("messages.trade-with-bonus", "%prefix% &eVocê recebeu &f%value% TPs &e(Bônus de &f%bonus%%&e)"); }
-    public String msgTradeNoBonus()   { return cfg.getString("messages.trade-no-bonus", "%prefix% &eVocê recebeu &f%value% TPs"); }
-    public String phBonusLine()       { return cfg.getString("messages.bonus", "&a&e     &bBônus &f(%bonus%.0%%)"); }
-    public String phValueLine()       { return cfg.getString("messages.value", "&e     &f+%value% &eTPs."); }
+    public String msgInsufficient()   { return cfg.getString("messages.insufficient-orbs", "%prefix%&cVocê não possui orbs suficientes!"); }
+    public String msgTradeTitle()     { return cfg.getString("messages.trade-title", "%prefix%&aTroca realizada!"); }
+    public String msgTradeWithBonus() { return cfg.getString("messages.trade-with-bonus", "%prefix%&aVocê recebeu &f%value%&a TPs (&f%bonus%%%&a bônus)"); }
+    public String msgTradeNoBonus()   { return cfg.getString("messages.trade-no-bonus", "%prefix%&aVocê recebeu &f%value%&a TPs"); }
+    public String phBonusLine()       { return cfg.getString("messages.bonus", "&7Bônus: &f%bonus%%"); }
+    public String phValueLine()       { return cfg.getString("messages.value", "&7Total: &f%value% TPs"); }
 
     // ====== fallback item ======
     public int    fallbackId()        { return cfg.getInt("item.id", 4146); }
@@ -97,8 +95,8 @@ public final class ConfigManager {
     }
     public int    getBonusForLevelKey(String key)      { Integer v = levelsBonus.get(key.toLowerCase()); return v == null ? 0 : v; }
     public String getPermissionForLevelKey(String key) { String s = levelsPerm.get(key.toLowerCase());  return s == null ? "" : s; }
-    public Map<String,Integer> bonusLevelsSnapshot()   { return new LinkedHashMap<String,Integer>(levelsBonus); }
-    public Map<String,String>  permissionLevelsSnapshot(){ return new LinkedHashMap<String,String>(levelsPerm); }
+    public Map<String,Integer> bonusLevelsSnapshot()   { return new LinkedHashMap<>(levelsBonus); }
+    public Map<String,String>  permissionLevelsSnapshot(){ return new LinkedHashMap<>(levelsPerm); }
 
     // ====== orbs ======
     public static final class OrbDefinition {
@@ -118,8 +116,7 @@ public final class ConfigManager {
         orbs.clear();
         ConfigurationSection sec = cfg.getConfigurationSection("orbs");
         if (sec != null) {
-            Set<String> keys = sec.getKeys(false);
-            for (String key : keys) {
+            for (String key : sec.getKeys(false)) {
                 ConfigurationSection s = sec.getConfigurationSection(key);
                 if (s == null) continue;
                 int id      = s.getInt("id", fallbackId());
@@ -135,8 +132,29 @@ public final class ConfigManager {
         }
     }
 
-    public LinkedHashMap<String, OrbDefinition> getOrbs() { return new LinkedHashMap<String, OrbDefinition>(orbs); }
+    public LinkedHashMap<String, OrbDefinition> getOrbs() { return new LinkedHashMap<>(orbs); }
 
-    /** Quantidades padrão dos botões do menu. */
+    // ====== slots ======
+    private void loadSlots() {
+        slots.clear();
+        for (String key : Arrays.asList("orb 1","orb 16","orb64","orb all","info-orb")) {
+            ConfigurationSection sec = cfg.getConfigurationSection(key);
+            if (sec != null) {
+                int x = sec.getInt("slot.x", -1);
+                int y = sec.getInt("slot.y", -1);
+                if (x >= 0 && y >= 0) slots.put(key, new SlotPos(x, y));
+            }
+        }
+    }
+
+    public SlotPos getSlot(String key) { return slots.get(key); }
+
+    public static final class SlotPos {
+        public final int x;
+        public final int y;
+        public SlotPos(int x, int y) { this.x = x; this.y = y; }
+        public int toIndex() { return (y-1) * 9 + (x-1); } // 0..53
+    }
+
     public int[] optionAmounts() { return new int[] { 1, 16, 32, 64 }; }
 }

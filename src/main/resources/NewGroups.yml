@@ -22,7 +22,6 @@ groups:
       - newplots.use
       # ====== grupo "membro" ======
       - grupo.membro
-
   vip:
     default: false
     prefix: "&6[VIP] "

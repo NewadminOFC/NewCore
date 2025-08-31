@@ -2,19 +2,32 @@ package n.plugins.NewOrbs;
 
 import n.plugins.NewCore;
 import n.plugins.NewOrbs.ConfigManager.OrbDefinition;
+import n.plugins.NewOrbs.ConfigManager.SlotPos;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.craftbukkit.v1_7_R4.inventory.CraftItemStack;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.block.Action;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCreativeEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerPickupItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import net.minecraft.server.v1_7_R4.NBTTagCompound;
+import net.minecraft.server.v1_7_R4.NBTTagInt;
+import net.minecraft.server.v1_7_R4.NBTTagList;
 
 import java.util.*;
 
@@ -24,250 +37,327 @@ public final class MenuListener implements Listener {
     private final ConfigManager config;
     private final TradeManager trade;
 
-    private final HashMap<UUID, String> currentOrb = new HashMap<UUID, String>();
-    private final HashMap<UUID, Inventory> lastInv = new HashMap<UUID, Inventory>();
+    // trava por jogador enquanto um menu do Orbs estiver aberto (1.7.10 OK)
+    private final Set<UUID> lockedPlayers = new HashSet<UUID>();
+    // orb ativa no menu de trade
+    private final Map<UUID, String> currentOrb = new HashMap<UUID, String>();
 
     public MenuListener(NewCore plugin, ConfigManager config, TradeManager trade) {
         this.plugin = plugin;
         this.config = config;
-        this.trade  = trade;
+        this.trade = trade;
     }
 
-    // ===========================================
-    //  abrir menu com clique direito na orb
-    // ===========================================
-    @EventHandler
+    private void lock(Player p)   { lockedPlayers.add(p.getUniqueId()); }
+    private void unlock(Player p) { lockedPlayers.remove(p.getUniqueId()); currentOrb.remove(p.getUniqueId()); }
+    private boolean isLocked(Player p) { return lockedPlayers.contains(p.getUniqueId()); }
+
+    private void clearCursor(Player p, InventoryClickEvent e) {
+        try { e.setCursor(null); } catch (Throwable ignored) {}
+        try { p.setItemOnCursor(null); } catch (Throwable ignored) {}
+    }
+    private void clearCursor(Player p) {
+        try { p.setItemOnCursor(null); } catch (Throwable ignored) {}
+    }
+
+    // =========================================
+    // Abrir trade direto clicando com a ORB
+    // =========================================
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInteract(PlayerInteractEvent e) {
-        if (!(e.getPlayer() instanceof Player)) return;
         if (e.getItem() == null) return;
-
         Player p = e.getPlayer();
-        ItemStack item = e.getItem();
-
-        // Apenas cliques direitos
         if (e.getAction() != Action.RIGHT_CLICK_AIR && e.getAction() != Action.RIGHT_CLICK_BLOCK) return;
 
-        // Verifica se o item corresponde exatamente a alguma orb do config
+        ItemStack item = e.getItem();
         for (OrbDefinition orb : config.getOrbs().values()) {
-            if (item.getTypeId() == orb.id && item.getDurability() == (short) orb.data) {
-                // Verifica nome do item
-                if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
-                    String display = ChatColor.stripColor(item.getItemMeta().getDisplayName());
-                    String expected = ChatColor.stripColor(MessageUtils.color(orb.name));
-                    if (display.equalsIgnoreCase(expected)) {
-                        e.setCancelled(true); // impede uso padrão
-                        openTradeMenu(p, orb.key);
-                        p.playSound(p.getLocation(), Sound.CLICK, 1.0f, 1.0f);
-                        return;
+            try {
+                if (item.getTypeId() == orb.id && item.getDurability() == (short) orb.data) {
+                    if (item.hasItemMeta() && item.getItemMeta().hasDisplayName()) {
+                        String display = ChatColor.stripColor(item.getItemMeta().getDisplayName());
+                        String expected = ChatColor.stripColor(orb.name);
+                        if (display.equalsIgnoreCase(expected)) {
+                            e.setCancelled(true);
+                            clearCursor(p);
+                            openTradeMenu(p, orb.key);
+                            p.playSound(p.getLocation(), Sound.CLICK, 1.0f, 1.0f);
+                            return;
+                        }
                     }
                 }
-            }
+            } catch (Throwable ignored) {}
         }
     }
 
-
-    public void openMainMenu(Player p) {
-        LinkedHashMap<String, OrbDefinition> orbs = config.getOrbs();
-        int size = orbs.size() <= 9 ? 9 : (orbs.size() <= 18 ? 18 : 27);
-        Inventory inv = Bukkit.createInventory(p, size, MessageUtils.color(config.menuTitleMain()));
-
-        // Item de informação no centro
-        ItemStack info = buildInfoItem(p, -1);
-        int center = Math.min(size - 1, 4);
-        inv.setItem(center, info);
-
-        int slot = 0;
-        for (Map.Entry<String,OrbDefinition> e : orbs.entrySet()) {
-            OrbDefinition orb = e.getValue();
-            ItemStack icon;
-            try {
-                icon = new ItemStack(orb.id, 1, (short) orb.data);
-            } catch (Throwable t) {
-                icon = new ItemStack(Material.EMERALD, 1);
-            }
-            ItemMeta meta = icon.getItemMeta();
-            meta.setDisplayName(MessageUtils.color("&f" + orb.name));
-            ArrayList<String> lore = new ArrayList<String>();
-            lore.add(MessageUtils.color("&7Clique para trocar " + orb.name));
-            lore.add(MessageUtils.color("&7Você possui: &e" + trade.countOrbsInInventory(p, orb)));
-            meta.setLore(lore);
-            icon.setItemMeta(meta);
-
-            if (slot == center) slot++; // não sobrescrever o info central
-            if (slot >= inv.getSize()) break;
-            inv.setItem(slot, icon);
-            slot++;
-        }
-
-        lastInv.put(p.getUniqueId(), inv);
-        p.openInventory(inv);
-    }
-
+    // =========================================
+    // Somente menu de TRADE por ORB
+    // =========================================
     public void openTradeMenu(Player p, String orbKey) {
-        LinkedHashMap<String, OrbDefinition> orbs = config.getOrbs();
-        OrbDefinition orb = orbs.get(orbKey.toLowerCase());
+        OrbDefinition orb = getOrbByKey(orbKey);
         if (orb == null) {
-            for (Map.Entry<String,OrbDefinition> e : orbs.entrySet()) {
-                String disp = ChatColor.stripColor(MessageUtils.color(e.getValue().name));
-                if (disp.equalsIgnoreCase(ChatColor.stripColor(orbKey))) {
-                    orb = e.getValue();
-                    break;
-                }
-            }
-        }
-        if (orb == null) {
-            openMainMenu(p);
-            return;
+            orb = firstOrb(); // fallback
+            if (orb == null) return;
         }
         currentOrb.put(p.getUniqueId(), orb.key);
 
-        int size = 27;
-        Inventory inv = Bukkit.createInventory(p, size, MessageUtils.color(orb.menuTitle));
+        int size = computeTradeInvSize();
+        String menuTitle = ChatColor.translateAlternateColorCodes('&', orb.menuTitle);
+        Inventory inv = Bukkit.createInventory(p, size, menuTitle);
 
-        // Info topo
-        inv.setItem(4, buildInfoItem(p, orb.baseValue));
+        setAtSlotOrDefault(inv, "info-orb", buildInfoItem(p, orb.baseValue), 4);
+        setAtSlotOrDefault(inv, "orb 1",  buildOptionItem(p, orb, 1,  false), 10);
+        setAtSlotOrDefault(inv, "orb 16", buildOptionItem(p, orb, 16, false), 12);
+        setAtSlotOrDefault(inv, "orb64",  buildOptionItem(p, orb, 64, false), 14);
+        setAtSlotOrDefault(inv, "orb all", buildOptionItem(p, orb, trade.countOrbsInInventory(p, orb, true), true), 13);
 
-        // Opções
-        int[] amounts = config.optionAmounts();
-        int[] slots = new int[] { 10, 12, 14, 16 };
-        for (int i = 0; i < amounts.length && i < slots.length; i++) {
-            inv.setItem(slots[i], buildOptionItem(p, orb, amounts[i], false));
-        }
+        // botão fecha
+        ItemStack close = new ItemStack(Material.ARROW, 1);
+        ItemMeta bm = close.getItemMeta();
+        bm.setDisplayName(ChatColor.translateAlternateColorCodes('&', "&cFechar"));
+        bm.setLore(Collections.singletonList(ChatColor.translateAlternateColorCodes('&', "&7Fechar este menu")));
+        close.setItemMeta(bm);
+        inv.setItem(size - 1, close);
 
-        // Todos
-        inv.setItem(13, buildOptionItem(p, orb, trade.countOrbsInInventory(p, orb), true));
-
-        // Voltar
-        ItemStack back = new ItemStack(Material.ARROW, 1);
-        ItemMeta bm = back.getItemMeta();
-        bm.setDisplayName(MessageUtils.color("&cVoltar"));
-        bm.setLore(Collections.singletonList(MessageUtils.color("&7Retornar ao menu principal")));
-        back.setItemMeta(bm);
-        inv.setItem(size - 1, back);
-
-        lastInv.put(p.getUniqueId(), inv);
+        lock(p);
+        clearCursor(p);
         p.openInventory(inv);
+    }
+
+    private OrbDefinition getOrbByKey(String k) {
+        if (k == null) return null;
+        return config.getOrbs().get(k.toLowerCase());
+    }
+    private OrbDefinition firstOrb() {
+        LinkedHashMap<String, OrbDefinition> map = config.getOrbs();
+        for (OrbDefinition o : map.values()) return o;
+        return null;
+    }
+
+    private int computeTradeInvSize() {
+        int maxY = 0;
+        for (String k : new String[]{"info-orb", "orb 1", "orb 16", "orb64", "orb all"}) {
+            SlotPos sp = config.getSlot(k);
+            if (sp != null && sp.y > maxY) maxY = sp.y;
+        }
+        int rows = Math.max(3, maxY);
+        return Math.min(54, Math.max(9, rows * 9));
+    }
+
+    private void setAtSlotOrDefault(Inventory inv, String key, ItemStack item, int fallbackIndex) {
+        int idx = indexFor(inv, key, fallbackIndex);
+        if (idx >= 0) inv.setItem(idx, item);
+    }
+
+    private int indexFor(Inventory inv, String key, int fallbackIndex) {
+        SlotPos sp = config.getSlot(key);
+        int idx = sp != null ? sp.toIndex() : fallbackIndex;
+        return (idx >= 0 && idx < inv.getSize()) ? idx : -1;
     }
 
     private ItemStack buildInfoItem(Player p, int baseValue) {
         ItemStack info = new ItemStack(Material.BOOK, 1);
         ItemMeta im = info.getItemMeta();
-        im.setDisplayName(MessageUtils.color(config.menuInfoTitle()));
-        ArrayList<String> lore = new ArrayList<String>();
-        lore.add(MessageUtils.color(config.menuInfoLore1()));
+        im.setDisplayName(ChatColor.translateAlternateColorCodes('&', config.menuInfoTitle()));
+        List<String> lore = new ArrayList<String>();
+        lore.add(ChatColor.translateAlternateColorCodes('&', config.menuInfoLore1()));
         int bonus = trade.getBonusPercent(p);
-        lore.add(MessageUtils.color(config.menuInfoLoreBonus().replace("%bonus%", String.valueOf(bonus))));
-        if (baseValue >= 0) lore.add(MessageUtils.color(config.menuInfoLoreBase().replace("%base%", String.valueOf(baseValue))));
+        lore.add(ChatColor.translateAlternateColorCodes('&',
+                config.menuInfoLoreBonus().replace("%bonus%", String.valueOf(bonus))));
+        if (baseValue >= 0) {
+            lore.add(ChatColor.translateAlternateColorCodes('&',
+                    config.menuInfoLoreBase().replace("%base%", String.valueOf(baseValue))));
+        }
         im.setLore(lore);
         info.setItemMeta(im);
         return info;
     }
 
     private ItemStack buildOptionItem(Player p, OrbDefinition orb, int amount, boolean all) {
-        int have = trade.countOrbsInInventory(p, orb);
+        int have = trade.countOrbsInInventory(p, orb, true);
         if (all) amount = have;
         if (amount < 0) amount = 0;
 
-        ItemStack paper = new ItemStack(Material.PAPER, 1);
-        ItemMeta pm = paper.getItemMeta();
-
+        ItemStack item = new ItemStack(orb.id, 1, (short) orb.data);
+        List<String> lore = new ArrayList<String>();
         int bonus = trade.getBonusPercent(p);
         int value = trade.computeValue(orb.baseValue, amount <= 0 ? 0 : amount, bonus);
 
-        java.util.HashMap<String,String> ph = new java.util.HashMap<String,String>();
+        Map<String, String> ph = new HashMap<String, String>();
         ph.put("amount", String.valueOf(amount));
         ph.put("value", trade.formatNumber(value));
 
         String title = all ? config.optionAllTitle() : config.optionTitle();
-        pm.setDisplayName(MessageUtils.applyPlaceholders(title, ph));
+        ItemMeta im = item.getItemMeta();
+        im.setDisplayName(ChatColor.translateAlternateColorCodes('&', MessageUtils.applyPlaceholders(title, ph)));
 
-        ArrayList<String> lore = new ArrayList<String>();
-        String l1 = all ? config.optionAllLore() : config.optionLore();
-        lore.add(MessageUtils.applyPlaceholders(l1, ph));
-        java.util.HashMap<String,String> mapAmt = new java.util.HashMap<String,String>();
+        // Empilhar 1/16/64 com a mesma quantidade
+        if (!all) {
+            int stack = amount <= 0 ? 1 : (amount > 64 ? 64 : amount);
+            try { item.setAmount(stack); } catch (Throwable ignored) {}
+        } else {
+            try { item.setAmount(1); } catch (Throwable ignored) {}
+        }
+
+        if (all) {
+            item = addGlowWithoutLore(item);
+            lore.add("");
+        }
+
+        lore.add(ChatColor.translateAlternateColorCodes('&', MessageUtils.applyPlaceholders(config.optionLore(), ph)));
+        Map<String, String> mapAmt = new HashMap<String, String>();
         mapAmt.put("amount", String.valueOf(have));
-        lore.add(MessageUtils.applyPlaceholders(config.optionAmount(), mapAmt));
-        lore.add(MessageUtils.applyPlaceholders(config.optionReceive(), ph));
+        lore.add(ChatColor.translateAlternateColorCodes('&', MessageUtils.applyPlaceholders(config.optionAmount(), mapAmt)));
+        lore.add(ChatColor.translateAlternateColorCodes('&', MessageUtils.applyPlaceholders(config.optionReceive(), ph)));
 
-        pm.setLore(lore);
-        paper.setItemMeta(pm);
-        return paper;
+        im.setLore(lore);
+        item.setItemMeta(im);
+        return item;
     }
 
-    @EventHandler
+    private ItemStack addGlowWithoutLore(ItemStack item) {
+        try {
+            net.minecraft.server.v1_7_R4.ItemStack nmsItem = CraftItemStack.asNMSCopy(item);
+            NBTTagCompound tag = nmsItem.hasTag() ? nmsItem.getTag() : new NBTTagCompound();
+            NBTTagList enchants = new NBTTagList();
+            NBTTagCompound enchant = new NBTTagCompound();
+            enchant.set("id", new NBTTagInt(Enchantment.DURABILITY.getId()));
+            enchant.set("lvl", new NBTTagInt(1));
+            enchants.add(enchant);
+            tag.set("ench", enchants);
+            nmsItem.setTag(tag);
+            return CraftItemStack.asBukkitCopy(nmsItem);
+        } catch (Exception e) {
+            return item;
+        }
+    }
+
+    // Só consideramos menus das ORBs (sem menu principal)
+    private boolean isOurMenu(Inventory top) {
+        if (top == null) return false;
+        String title = ChatColor.stripColor(top.getTitle());
+        for (OrbDefinition orb : config.getOrbs().values()) {
+            if (title.equalsIgnoreCase(ChatColor.stripColor(orb.menuTitle))) return true;
+        }
+        return false;
+    }
+
+    // Lock open/close
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onOpen(InventoryOpenEvent e) {
+        if (!(e.getPlayer() instanceof Player)) return;
+        Player p = (Player) e.getPlayer();
+        if (isOurMenu(e.getView().getTopInventory())) lock(p);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onClose(InventoryCloseEvent e) {
+        if (!(e.getPlayer() instanceof Player)) return;
+        final Player p = (Player) e.getPlayer();
+
+        // desbloqueio tardio (1 tick) – evita “gap” entre fechar e abrir
+        Bukkit.getScheduler().runTask(plugin, new Runnable() {
+            @Override public void run() {
+                try {
+                    Inventory top = p.getOpenInventory() != null ? p.getOpenInventory().getTopInventory() : null;
+                    if (isOurMenu(top)) {
+                        lock(p); // ainda está num menu nosso, mantém travado
+                    } else {
+                        unlock(p); // saiu do nosso menu
+                    }
+                } catch (Throwable ignored) { unlock(p); }
+            }
+        });
+    }
+
+    // Anti-roubo + lógica por slot
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onClick(InventoryClickEvent e) {
         if (!(e.getWhoClicked() instanceof Player)) return;
         Player p = (Player) e.getWhoClicked();
-        Inventory inv = e.getInventory();
-        if (inv == null) return;
 
-        String title;
-        try { title = inv.getTitle(); } catch (Throwable t) { title = inv.getName(); }
-        if (title == null) return;
+        Inventory top = e.getView().getTopInventory();
+        if (!isOurMenu(top) && !isLocked(p)) return;
 
-        String clean = ChatColor.stripColor(title);
-        String mainClean = ChatColor.stripColor(MessageUtils.color(config.menuTitleMain()));
+        e.setCancelled(true);
+        clearCursor(p, e); // evita “ghost item” no mouse
 
-        // Menu principal
-        if (clean.equalsIgnoreCase(mainClean)) {
-            e.setCancelled(true);
-            ItemStack clicked = e.getCurrentItem();
-            if (clicked == null || !clicked.hasItemMeta() || !clicked.getItemMeta().hasDisplayName()) return;
-            String dn = ChatColor.stripColor(clicked.getItemMeta().getDisplayName());
+        int raw = e.getRawSlot();
+        if (raw < 0 || top == null || raw >= top.getSize()) return;
 
-            for (Map.Entry<String,OrbDefinition> en : config.getOrbs().entrySet()) {
-                OrbDefinition orb = en.getValue();
-                if (ChatColor.stripColor(MessageUtils.color(orb.name)).equalsIgnoreCase(dn)) {
-                    openTradeMenu(p, orb.key);
-                    p.playSound(p.getLocation(), Sound.CLICK, 1.0f, 1.0f);
-                    return;
-                }
-            }
+        // TRADE MENU
+        OrbDefinition active = getActiveOrb(p, top);
+        if (active == null) return;
+
+        int idxInfo = indexFor(top, "info-orb", 4);
+        int idx1    = indexFor(top, "orb 1", 10);
+        int idx16   = indexFor(top, "orb 16", 12);
+        int idx64   = indexFor(top, "orb64", 14);
+        int idxAll  = indexFor(top, "orb all", 13);
+        int idxClose = top.getSize() - 1;
+
+        if (raw == idxClose) { p.closeInventory(); return; }
+        if (raw == idxInfo)  { p.playSound(p.getLocation(), Sound.CLICK, 1.0f, 1.2f); return; }
+
+        int amount = 0;
+        if      (raw == idx1)  amount = 1;
+        else if (raw == idx16) amount = 16;
+        else if (raw == idx64) amount = 64;
+        else if (raw == idxAll) amount = trade.countOrbsInInventory(p, active, true);
+        else return;
+
+        if (amount <= 0) {
+            p.sendMessage(ChatColor.translateAlternateColorCodes('&', config.prefix() + "&cVocê não possui orbs para trocar."));
             return;
         }
 
-        // Menus de orb
-        for (Map.Entry<String,OrbDefinition> en : config.getOrbs().entrySet()) {
-            OrbDefinition orb = en.getValue();
-            String t = ChatColor.stripColor(MessageUtils.color(orb.menuTitle));
-            if (clean.equalsIgnoreCase(t)) {
-                e.setCancelled(true);
-                ItemStack clicked = e.getCurrentItem();
-                if (clicked == null || !clicked.hasItemMeta() || !clicked.getItemMeta().hasDisplayName()) return;
+        // === TROCOU: fecha o menu ===
+        trade.trade(p, active, amount);
+        p.playSound(p.getLocation(), Sound.LEVEL_UP, 1.0f, 1.2f);
+        clearCursor(p);
+        p.closeInventory(); // <- fecha após a troca
+    }
 
-                // Voltar
-                if (clicked.getType() == Material.ARROW) {
-                    openMainMenu(p);
-                    p.playSound(p.getLocation(), Sound.CLICK, 1.0f, 0.8f);
-                    return;
-                }
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onCreative(InventoryCreativeEvent e) {
+        if (!(e.getWhoClicked() instanceof Player)) return;
+        Player p = (Player) e.getWhoClicked();
+        if (isLocked(p) || isOurMenu(e.getView().getTopInventory())) e.setCancelled(true);
+    }
 
-                int amount = 0;
-                try {
-                    String digits = ChatColor.stripColor(clicked.getItemMeta().getDisplayName()).replaceAll("[^0-9]", "");
-                    if (digits.length() > 0) amount = Integer.parseInt(digits);
-                } catch (Throwable ignored) {}
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onDrag(InventoryDragEvent e) {
+        if (!(e.getWhoClicked() instanceof Player)) return;
+        Player p = (Player) e.getWhoClicked();
+        if (!isLocked(p) && !isOurMenu(e.getView().getTopInventory())) return;
 
-                boolean isAll = ChatColor.stripColor(MessageUtils.color(config.optionAllTitle()))
-                        .equalsIgnoreCase(ChatColor.stripColor(clicked.getItemMeta().getDisplayName()));
-                if (isAll || amount <= 0) {
-                    amount = trade.countOrbsInInventory(p, orb);
-                }
-
-                if (amount <= 0) {
-                    p.sendMessage(MessageUtils.color(config.prefix() + "&cVocê não possui orbs para trocar."));
-                    return;
-                }
-
-                boolean ok = trade.trade(p, orb, amount);
-                if (!ok) {
-                    p.sendMessage(MessageUtils.color(config.msgInsufficient().replace("%prefix%", config.prefix())));
-                } else {
-                    p.playSound(p.getLocation(), Sound.LEVEL_UP, 1.0f, 1.2f);
-                }
-                openTradeMenu(p, orb.key);
-                return;
-            }
+        int topSize = e.getView().getTopInventory().getSize();
+        for (int raw : e.getRawSlots()) {
+            if (raw < topSize) { e.setCancelled(true); clearCursor(p); return; }
         }
+        e.setCancelled(true);
+        clearCursor(p);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onDrop(PlayerDropItemEvent e) {
+        if (isLocked(e.getPlayer())) e.setCancelled(true);
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPickup(PlayerPickupItemEvent e) {
+        if (isLocked(e.getPlayer())) e.setCancelled(true);
+    }
+
+    private OrbDefinition getActiveOrb(Player p, Inventory top) {
+        String key = currentOrb.get(p.getUniqueId());
+        if (key != null) {
+            OrbDefinition byKey = config.getOrbs().get(key);
+            if (byKey != null) return byKey;
+        }
+        String title = top == null ? "" : ChatColor.stripColor(top.getTitle());
+        for (OrbDefinition orb : config.getOrbs().values()) {
+            if (title.equalsIgnoreCase(ChatColor.stripColor(orb.menuTitle))) return orb;
+        }
+        return null;
     }
 }

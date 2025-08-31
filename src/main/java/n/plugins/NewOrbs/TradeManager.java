@@ -3,8 +3,10 @@ package n.plugins.NewOrbs;
 import n.plugins.NewCore;
 import n.plugins.NewOrbs.ConfigManager.OrbDefinition;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.text.NumberFormat;
 import java.util.Iterator;
@@ -21,16 +23,23 @@ public final class TradeManager {
         this.config = config;
     }
 
-    public int countOrbsInInventory(Player p, OrbDefinition orb) {
+    public int countOrbsInInventory(Player p, OrbDefinition orb, boolean exactName) {
         if (p == null) return 0;
         int count = 0;
         ItemStack[] contents = p.getInventory().getContents();
         if (contents == null) return 0;
-        for (int i = 0; i < contents.length; i++) {
-            ItemStack it = contents[i];
+
+        String orbName = ChatColor.stripColor(orb.name);
+
+        for (ItemStack it : contents) {
             if (it == null) continue;
             try {
                 if (it.getTypeId() == orb.id && it.getDurability() == (short) orb.data) {
+                    if (exactName) {
+                        if (!it.hasItemMeta() || !it.getItemMeta().hasDisplayName()) continue;
+                        String itemName = ChatColor.stripColor(it.getItemMeta().getDisplayName());
+                        if (!itemName.equalsIgnoreCase(orbName)) continue;
+                    }
                     count += it.getAmount();
                 }
             } catch (Throwable ignored) {}
@@ -42,10 +51,17 @@ public final class TradeManager {
         if (p == null || amount <= 0) return false;
         int needed = amount;
         ItemStack[] contents = p.getInventory().getContents();
+
+        String orbName = ChatColor.stripColor(orb.name);
+
         for (int i = 0; i < contents.length && needed > 0; i++) {
             ItemStack it = contents[i];
             if (it == null) continue;
             if (it.getTypeId() == orb.id && it.getDurability() == (short) orb.data) {
+                if (!it.hasItemMeta() || !it.getItemMeta().hasDisplayName()) continue;
+                String itemName = ChatColor.stripColor(it.getItemMeta().getDisplayName());
+                if (!itemName.equalsIgnoreCase(orbName)) continue;
+
                 int stackAmount = it.getAmount();
                 if (stackAmount <= needed) {
                     p.getInventory().setItem(i, null);
@@ -57,6 +73,7 @@ public final class TradeManager {
                 }
             }
         }
+
         if (needed <= 0) {
             p.updateInventory(); // 1.7.x
             return true;
@@ -100,7 +117,7 @@ public final class TradeManager {
     public boolean trade(Player p, OrbDefinition orb, int amount) {
         if (p == null || amount <= 0) return false;
 
-        int have = countOrbsInInventory(p, orb);
+        int have = countOrbsInInventory(p, orb, true);
         if (have < amount) {
             sendMessage(p, config.msgInsufficient());
             return false;
@@ -114,13 +131,11 @@ public final class TradeManager {
             return false;
         }
 
-        // Executa o comando configurado (ex.: jrmctp %value% %player%)
         String cmd = config.tpCommand()
                 .replace("%player%", p.getName())
                 .replace("%value%", String.valueOf(value));
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), cmd);
 
-        // Mensagens
         sendMessage(p, config.msgTradeTitle());
         if (bonus > 0) {
             sendMessage(p, config.msgTradeWithBonus()
@@ -139,5 +154,14 @@ public final class TradeManager {
         if (raw == null || raw.length() == 0) return;
         String s = raw.replace("%prefix%", config.prefix());
         p.sendMessage(MessageUtils.color(s));
+    }
+
+    public ItemStack buildAllItem(OrbDefinition orb) {
+        ItemStack item = new ItemStack(orb.id, 1, (short) orb.data);
+        ItemMeta meta = item.getItemMeta();
+        meta.setDisplayName(MessageUtils.color("&a" + orb.name));
+        meta.setLore(null);
+        item.setItemMeta(meta);
+        return item;
     }
 }
