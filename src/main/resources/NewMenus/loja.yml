@@ -1,0 +1,102 @@
+# arquivo: loja.yml
+menu:
+  title: "&aLoja Principal"
+  rows: 3
+  open-commands: ["loja", "shop"]
+  auto-refresh-ticks: 0
+  open-sound: "CLICK"
+  close-sound: "CLICK"
+
+  fill:
+    material: "STAINED_GLASS_PANE:15"
+    name: "&0"
+    amount: 1
+    glow: false
+
+open-with:
+  material: "BOOK"
+  name: "&aAbrir Loja"
+  lore:
+    - "&7Clique direito para abrir"
+
+items:
+
+  vip7d:
+    slot: 11
+    material: "EMERALD"
+    name: "&aVIP &7(&f7 dias&7)"
+    lore:
+      - "&7Compra VIP por 7 dias."
+      - "&7Preço: &6$ 5.000"
+    glow: true
+    cooldown-seconds: 1
+    price:
+      money: 5000
+      points: 0
+      items: []
+    commands:
+      # exemplo com LuckPerms; ajuste para seu sistema de ranks
+      - "[console] lp user %player% parent addtemp vip 7d"
+      - "[message] &aVocê comprou VIP por 7 dias!"
+    sound: "LEVEL_UP"
+
+  kit_pvp:
+    slot: 13
+    material: "DIAMOND_SWORD"
+    name: "&bKit PvP"
+    lore:
+      - "&7Recebe um kit inicial de PvP."
+      - "&7Preço: &d150 pontos"
+    enchantments:
+      - "DAMAGE_ALL:1"
+      - "DURABILITY:2"
+    price:
+      money: 0
+      points: 150
+      items: []
+    on-left:
+      commands:
+        - "[console] kit pvp %player%"
+    on-right:
+      commands:
+        - "[message] &eClique esquerdo para comprar e receber."
+    sound: "CLICK"
+
+  chave_crate:
+    slot: 15
+    material: "TRIPWIRE_HOOK"
+    name: "&6Chave &eComum"
+    lore:
+      - "&7Compra 1x &6Chave Comum"
+      - "&7Preço: &6$ 1.000 &7+ &f5x Barra de Ferro"
+    price:
+      money: 1000
+      points: 0
+      items:
+        - "265:0:5"   # id:data:quantidade  -> 265 = Iron Ingot
+    commands:
+      - "[console] crate key %player% common 1"
+      - "[message] &aVocê comprou uma &6Chave Comum&a!"
+    sound: "ORB_PICKUP"
+
+  perfil:
+    slot: 22
+    material: "SKULL_ITEM:3"
+    skull-owner: "%player%"
+    name: "&eSeu Perfil"
+    lore:
+      - "&7Mundo: &f%world%"
+      - "&7Online: &f%online%"
+      - "&7Pos: &f%x%&7/&f%y%&7/&f%z%"
+    commands:
+      - "[message] &7Olá, %player%!"
+    sound: "CLICK"
+
+  fechar:
+    slot: 26
+    material: "ARROW"
+    name: "&cFechar"
+    lore:
+      - "&7Fechar o menu"
+    close: true
+    sound: "CLICK"

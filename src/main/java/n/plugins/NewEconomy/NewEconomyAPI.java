@@ -1,6 +1,7 @@
 package n.plugins.NewEconomy;
 
 import org.bukkit.OfflinePlayer;
+import org.bukkit.entity.Player;
 
 import java.util.UUID;
 
@@ -32,10 +33,11 @@ public final class NewEconomyAPI {
         econ.setBalance(u, c);
     }
 
-    public static void deposit(UUID u, long c) {
+    public static void deposit(Player u, long c) {
         check();
-        econ.deposit(u, c);
+        econ.deposit(u.getUniqueId(), c); // <<< pega o UUID do player
     }
+
 
     public static boolean withdraw(UUID u, long c) {
         check();

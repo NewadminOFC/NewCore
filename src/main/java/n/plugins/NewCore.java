@@ -1,6 +1,7 @@
 // File: src/main/java/n/plugins/NewCore.java
 package n.plugins;
 
+import n.plugins.NewMenusCC.CCMenus;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -8,18 +9,26 @@ public final class NewCore extends JavaPlugin {
 
     private NewCommandManager commandManager;
 
-
     @Override
     public void onEnable() {
         mostrartitle();
+
+        // carrega todos os comandos/listeners padrões
         commandManager = new NewCommandManager(this);
         commandManager.registerAll();
+
+        // === habilita os ChestMenus ===
+        CCMenus.enable(this);
+
         getLogger().info("[NewCore] módulos carregados com sucesso.");
         try { saveResource("NewEssentials.yml", false); } catch (Throwable ignore) {}
     }
 
     @Override
     public void onDisable() {
+        // desliga os menus antes de desligar os módulos
+        CCMenus.disable();
+
         if (commandManager != null) {
             if (commandManager.getNewLogin() != null) {
                 commandManager.getNewLogin().shutdown();
